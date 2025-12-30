@@ -89,6 +89,25 @@ print(df_summary)
 
 See `examples/usage_example.py` and `examples/batch_analysis_example.py` for more complete examples.
 
+#### Configure Logging
+
+The package includes comprehensive logging support. Configure logging for production use or debugging:
+
+```python
+from examples.logging_config_example import setup_production_logging
+import logging
+
+# Set up production logging (file + console)
+setup_production_logging(log_dir='logs', log_level=logging.INFO)
+
+# Now use the package - logs will be written to files
+from ringdownanalysis import BatchRingDownAnalyzer
+analyzer = BatchRingDownAnalyzer()
+results = analyzer.process_directory("data")
+```
+
+See `examples/logging_config_example.py` for more logging configuration options.
+
 ## Overview
 
 The project compares two complementary approaches for frequency estimation:
@@ -223,6 +242,18 @@ See `examples/batch_analysis_example.py` for a complete batch analysis example.
 
 - **`usage_example.py`**: Comprehensive usage examples for all features
 - **`batch_analysis_example.py`**: Batch analysis workflow example
+- **`benchmark.py`**: Simple performance benchmark comparing NLS and DFT methods
+- **`logging_config_example.py`**: Examples for configuring logging in production and debugging
+
+### Benchmarks (`benchmarks/`)
+
+- **`benchmark_suite.py`**: Comprehensive pytest-benchmark test suite
+- **`run_benchmarks.py`**: Script to run benchmarks and generate reports
+- **`run_profiling.py`**: Script to profile workloads and identify bottlenecks
+- **`profile_utils.py`**: cProfile utilities for profiling workloads
+- **`README.md`**: Detailed guide for benchmarking and profiling
+
+See `benchmarks/README.md` for detailed information on performance benchmarking and profiling.
 
 ### Notebooks (`notebooks/`)
 
@@ -251,12 +282,13 @@ Core dependencies (automatically installed):
 - Matplotlib >= 3.5.0
 - tqdm >= 4.60.0
 - joblib >= 1.0.0
+- pandas >= 1.3.0
 
 Optional dependencies:
-- pandas >= 1.3.0 (for examples)
 - Jupyter >= 1.0.0 (for notebooks)
 - pytest >= 7.0.0 (for testing)
 - pytest-cov >= 4.0.0 (for coverage)
+- pytest-benchmark >= 4.0.0 (for benchmarking)
 - ruff >= 0.1.0 (for linting)
 
 ## Testing
@@ -272,6 +304,26 @@ With coverage:
 ```bash
 pytest --cov=ringdownanalysis --cov-report=html
 ```
+
+## Benchmarking
+
+The package includes a comprehensive benchmarking and profiling suite to measure performance and identify bottlenecks:
+
+```bash
+# Run benchmarks with medium workload
+python benchmarks/run_benchmarks.py --size medium
+
+# Profile critical workloads
+python benchmarks/run_profiling.py all --size medium
+```
+
+Or run benchmarks directly with pytest:
+
+```bash
+pytest benchmarks/benchmark_suite.py --benchmark-only
+```
+
+See `benchmarks/README.md` for detailed information on benchmarking and profiling workflows.
 
 ## References
 
