@@ -19,26 +19,6 @@ except ImportError:
     def tqdm(iterable=None, **kwargs):
         return iterable if iterable is not None else range(kwargs.get('total', 0))
 
-# #region agent log
-import json
-import os
-def _debug_log(location, message, data, hypothesis_id=None):
-    log_path = "/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log"
-    try:
-        with open(log_path, "a") as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": hypothesis_id,
-                "location": location,
-                "message": message,
-                "data": data,
-                "timestamp": __import__("time").time() * 1000
-            }) + "\n")
-    except:
-        pass
-# #endregion
-
 from .signal import RingDownSignal
 from .estimators import FrequencyEstimator, NLSFrequencyEstimator, DFTFrequencyEstimator
 from .crlb import CRLBCalculator
@@ -182,16 +162,6 @@ class MonteCarloAnalyzer:
         # Use parallel processing if available
         use_parallel = HAS_MULTIPROCESSING and n_mc > 10
         
-        # #region agent log
-        _debug_log("monte_carlo.py:163", "Checking tqdm availability and types", {
-            "HAS_TQDM": HAS_TQDM,
-            "tqdm_type": str(type(tqdm)),
-            "n_mc": n_mc,
-            "n_mc_type": str(type(n_mc)),
-            "use_parallel": use_parallel
-        }, "A")
-        # #endregion
-        
         if use_parallel:
             if n_workers is None:
                 n_workers = mp.cpu_count()
@@ -231,17 +201,6 @@ class MonteCarloAnalyzer:
             with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 futures = {executor.submit(_process_single_trial, args): args[0] for args in trial_args}
                 timeout_count = 0
-                
-                # #region agent log
-                _debug_log("monte_carlo.py:205", "Before tqdm context manager", {
-                    "HAS_TQDM": HAS_TQDM,
-                    "tqdm_type": str(type(tqdm)),
-                    "n_mc": n_mc,
-                    "tqdm_callable": str(callable(tqdm)),
-                    "has_enter": hasattr(tqdm, "__enter__"),
-                    "has_exit": hasattr(tqdm, "__exit__")
-                }, "A")
-                # #endregion
                 
                 with tqdm(total=n_mc, desc="Monte Carlo trials", unit="trial") as pbar:
                     for future in as_completed(futures):

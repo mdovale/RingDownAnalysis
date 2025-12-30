@@ -62,10 +62,12 @@ class CRLBCalculator:
         # S_0 = sum_n exp(-2t_n/tau)
         # S_1 = sum_n t_n exp(-2t_n/tau)
         # S_2 = sum_n t_n^2 exp(-2t_n/tau)
+        # Optimize by computing t**2 once and reusing
         exp_factor = np.exp(-2.0 * t / tau)
+        t_squared = t * t  # Compute once and reuse
         S_0 = np.sum(exp_factor)
         S_1 = np.sum(t * exp_factor)
-        S_2 = np.sum(t**2 * exp_factor)
+        S_2 = np.sum(t_squared * exp_factor)
         
         # Effective Fisher information for omega (frequency in rad/s)
         # I_eff(omega) = (A0^2/sigma^2) * (S_2 - S_1^2/S_0)

@@ -49,6 +49,7 @@ class RingDownAnalyzer:
         data: np.ndarray,
         t: np.ndarray,
         fs: float,
+        initial_params: Optional[tuple] = None,
     ) -> float:
         """
         Estimate tau from full data using NLS fit.
@@ -70,8 +71,11 @@ class RingDownAnalyzer:
         N = len(data)
         t_norm = t - t[0]
         
-        # Get initial parameter estimates
-        f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(data, fs)
+        # Get initial parameter estimates (use cached if provided)
+        if initial_params is not None:
+            f0_init, phi0_init, A0_init, c0 = initial_params
+        else:
+            f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(data, fs)
         
         # Initial tau guess from envelope decay
         tau_init = _estimate_initial_tau_from_envelope(data, t_norm)
@@ -96,7 +100,7 @@ class RingDownAnalyzer:
             ftol=1e-8,
             xtol=1e-8,
             gtol=1e-8,
-            max_nfev=1000,
+            max_nfev=500,
             verbose=0,
         )
         
@@ -153,6 +157,7 @@ class RingDownAnalyzer:
         t_crop: np.ndarray,
         tau_est: float,
         fs: float,
+        initial_params: Optional[tuple] = None,
     ) -> tuple[float, float]:
         """
         Estimate A0 (initial amplitude) and sigma (noise std) from cropped data.
@@ -185,8 +190,11 @@ class RingDownAnalyzer:
             A0, f, phi, c = p
             return (A0 * np.exp(-t_crop_norm / tau_est) * np.cos(2.0 * np.pi * f * t_crop_norm + phi) + c) - data_cropped
         
-        # Get initial guesses
-        f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(data_cropped, fs)
+        # Get initial guesses (use cached if provided)
+        if initial_params is not None:
+            f0_init, phi0_init, A0_init, c0 = initial_params
+        else:
+            f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(data_cropped, fs)
         
         # Quick fit to get residuals
         df = fs / N_crop
@@ -199,7 +207,7 @@ class RingDownAnalyzer:
             bounds=([0.0, f_low, -np.pi, -np.inf], [10.0 * A0_init, f_high, np.pi, np.inf]),
             method="trf",
             ftol=1e-6,
-            max_nfev=200,
+            max_nfev=150,
             verbose=0,
         )
         
@@ -234,8 +242,11 @@ class RingDownAnalyzer:
         # Calculate sampling frequency
         fs = 1.0 / np.mean(np.diff(t))
         
-        # Estimate tau from full data
-        tau_est = self.estimate_tau(data, t, fs)
+        # Compute initial parameters once and reuse them
+        initial_params_full = _estimate_initial_parameters_from_dft(data, fs)
+        
+        # Estimate tau from full data (using cached initial params)
+        tau_est = self.estimate_tau(data, t, fs, initial_params=initial_params_full)
         
         # Crop data to 3*tau_est
         t_crop, data_cropped = self.crop_data_to_tau(t, data, tau_est, min_samples=1000)
@@ -246,12 +257,15 @@ class RingDownAnalyzer:
             t_crop = t
             data_cropped = data
         
+        # Compute initial parameters for cropped data once
+        initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
+        
         # Estimate frequencies on cropped data
-        f_nls = self.nls_estimator.estimate(data_cropped, fs)
+        f_nls = self.nls_estimator.estimate(data_cropped, fs, initial_params=initial_params_cropped)
         f_dft = self.dft_estimator.estimate(data_cropped, fs)
         
-        # Estimate noise parameters
-        A0_est, sigma_est = self.estimate_noise_parameters(data_cropped, t_crop, tau_est, fs)
+        # Estimate noise parameters (using cached initial params)
+        A0_est, sigma_est = self.estimate_noise_parameters(data_cropped, t_crop, tau_est, fs, initial_params=initial_params_cropped)
         
         # Calculate CRLB
         N_crop = len(data_cropped)

@@ -116,7 +116,7 @@ def _fit_lorentzian_to_peak(
                 (f_bins[-1] - f_bins[0]) * 2.0,
                 np.inf,
             ]),
-            maxfev=1000,
+            maxfev=300,
         )
         
         A_fit, f0_fit, gamma_fit, offset_fit = popt
@@ -220,7 +220,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         fs : float
             Sampling frequency (Hz)
         **kwargs
-            Additional parameters (ignored)
+            Additional parameters:
+            - initial_params: Optional tuple of (f0_init, phi0_init, A0_init, c0) to avoid redundant FFT
         
         Returns:
         --------
@@ -230,8 +231,12 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         N = len(x)
         t = np.arange(N) / fs
         
-        # Get initial parameter estimates
-        f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
+        # Get initial parameter estimates (use cached if provided)
+        initial_params = kwargs.get('initial_params', None)
+        if initial_params is not None:
+            f0_init, phi0_init, A0_init, c0 = initial_params
+        else:
+            f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
         
         if self.tau_known is not None:
             # Known tau: estimate (A0, f, phi, c)
@@ -255,7 +260,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                 ftol=1e-8,
                 xtol=1e-8,
                 gtol=1e-8,
-                max_nfev=500,
+                max_nfev=400,
                 verbose=0,
             )
             
@@ -286,7 +291,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                 ftol=1e-8,
                 xtol=1e-8,
                 gtol=1e-8,
-                max_nfev=1000,
+                max_nfev=500,
                 verbose=0,
             )
             
