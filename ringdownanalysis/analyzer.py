@@ -2,6 +2,7 @@
 Analysis pipeline for real ring-down measurement data.
 """
 
+import logging
 import numpy as np
 from typing import Dict, Optional
 from pathlib import Path
@@ -10,6 +11,8 @@ from scipy.optimize import least_squares
 from .data_loader import RingDownDataLoader
 from .estimators import NLSFrequencyEstimator, DFTFrequencyEstimator, _estimate_initial_parameters_from_dft, _estimate_initial_tau_from_envelope
 from .crlb import CRLBCalculator
+
+logger = logging.getLogger(__name__)
 
 
 class RingDownAnalyzer:
@@ -108,9 +111,39 @@ class RingDownAnalyzer:
             _, _, _, tau_est, _ = res_tau.x
             # Sanity check
             if tau_est <= 0 or not np.isfinite(tau_est) or tau_est > 10.0 * t_norm[-1] or tau_est < t_norm[1]:
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        "tau_sanity_check_failed",
+                        extra={
+                            "event": "tau_sanity_check_failed",
+                            "tau_est": float(tau_est),
+                            "tau_init": float(tau_init),
+                            "t_max": float(t_norm[-1]),
+                        },
+                    )
                 return tau_init
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "tau_estimated",
+                    extra={
+                        "event": "tau_estimated",
+                        "tau_est": float(tau_est),
+                        "tau_init": float(tau_init),
+                        "nfev": res_tau.nfev,
+                    },
+                )
             return tau_est
         else:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "tau_estimation_failed",
+                    extra={
+                        "event": "tau_estimation_failed",
+                        "tau_init": float(tau_init),
+                        "message": res_tau.message,
+                        "nfev": res_tau.nfev,
+                    },
+                )
             return tau_init
     
     def crop_data_to_tau(
@@ -147,7 +180,29 @@ class RingDownAnalyzer:
         # If cropped data is too short, return original
         # Use views instead of copies when possible
         if len(t_crop) < min_samples:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "data_crop_too_short",
+                    extra={
+                        "event": "data_crop_too_short",
+                        "n_cropped": len(t_crop),
+                        "min_samples": min_samples,
+                        "tau_est": float(tau_est),
+                    },
+                )
             return t, data
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "data_cropped",
+                extra={
+                    "event": "data_cropped",
+                    "n_original": len(t),
+                    "n_cropped": len(t_crop),
+                    "tau_est": float(tau_est),
+                    "crop_time": float(t_crop[-1]) if len(t_crop) > 0 else 0.0,
+                },
+            )
         
         return t_crop, data_cropped
     
@@ -215,10 +270,30 @@ class RingDownAnalyzer:
             residuals = res_fit.fun
             sigma_est = np.std(residuals)
             A0_est = res_fit.x[0]
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "noise_parameters_estimated",
+                    extra={
+                        "event": "noise_parameters_estimated",
+                        "A0_est": float(A0_est),
+                        "sigma_est": float(sigma_est),
+                        "nfev": res_fit.nfev,
+                    },
+                )
         else:
             # Fallback: estimate noise from tail
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "noise_estimation_fallback",
+                    extra={
+                        "event": "noise_estimation_fallback",
+                        "message": res_fit.message,
+                        "nfev": res_fit.nfev,
+                    },
+                )
             tail_start = max(int(0.8 * len(data_cropped)), len(data_cropped) - 1000)
             sigma_est = np.std(data_cropped[tail_start:])
+            A0_est = np.sqrt(2.0) * np.std(data_cropped[:n_init])
         
         return A0_est, sigma_est
     
@@ -236,6 +311,15 @@ class RingDownAnalyzer:
         dict
             Results dictionary with all analysis data
         """
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "analysis_start",
+                extra={
+                    "event": "analysis_start",
+                    "filepath": str(filepath),
+                },
+            )
+        
         # Load data
         t, data, V2, file_type = RingDownDataLoader.load(filepath)
         
@@ -271,6 +355,19 @@ class RingDownAnalyzer:
         N_crop = len(data_cropped)
         crlb_var_f = self.crlb_calc.variance(A0_est, sigma_est, fs, N_crop, tau_est)
         crlb_std_f = np.sqrt(crlb_var_f) if np.isfinite(crlb_var_f) else np.inf
+        
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "analysis_complete",
+                extra={
+                    "event": "analysis_complete",
+                    "filepath": str(filepath),
+                    "f_nls": float(f_nls),
+                    "f_dft": float(f_dft),
+                    "tau_est": float(tau_est),
+                    "crlb_std_f": float(crlb_std_f) if np.isfinite(crlb_std_f) else None,
+                },
+            )
         
         return {
             'filename': Path(filepath).name,

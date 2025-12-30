@@ -6,6 +6,7 @@ computing summary statistics, Q factor analysis, consistency analysis, and
 comparison with CRLB bounds.
 """
 
+import logging
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
@@ -14,6 +15,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 
 from .analyzer import RingDownAnalyzer
+
+logger = logging.getLogger(__name__)
 
 
 def _process_single_file(filepath: str) -> Dict:
@@ -96,6 +99,16 @@ class BatchRingDownAnalyzer:
         # Determine number of workers
         if n_jobs is None or n_jobs == 1:
             # Sequential processing
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    "batch_processing_start",
+                    extra={
+                        "event": "batch_processing_start",
+                        "n_files": len(filepaths),
+                        "mode": "sequential",
+                    },
+                )
+            
             for filepath in filepaths:
                 try:
                     if verbose:
@@ -115,6 +128,16 @@ class BatchRingDownAnalyzer:
                         print(f"  Difference: {abs(result['f_nls'] - result['f_dft']):.6e} Hz")
                         print(f"  CRLB std: {result['crlb_std_f']:.6e} Hz")
                 except Exception as e:
+                    logger.error(
+                        "file_processing_error",
+                        extra={
+                            "event": "file_processing_error",
+                            "filepath": str(filepath),
+                            "error_type": type(e).__name__,
+                            "error_msg": str(e),
+                        },
+                        exc_info=True,
+                    )
                     if verbose:
                         print(f"  Error processing {Path(filepath).name}: {e}")
                         import traceback
@@ -123,6 +146,17 @@ class BatchRingDownAnalyzer:
             # Parallel processing
             if n_jobs == -1:
                 n_jobs = os.cpu_count() or 1
+            
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    "batch_processing_start",
+                    extra={
+                        "event": "batch_processing_start",
+                        "n_files": len(filepaths),
+                        "mode": "parallel",
+                        "n_workers": n_jobs,
+                    },
+                )
             
             if verbose:
                 print(f"Processing {len(filepaths)} files using {n_jobs} workers...")
@@ -147,6 +181,16 @@ class BatchRingDownAnalyzer:
                         idx = filepath_to_index[filepath]
                         results_dict[idx] = result
                         
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(
+                                "file_processed",
+                                extra={
+                                    "event": "file_processed",
+                                    "filepath": str(filepath),
+                                    "progress": f"{len(results_dict)}/{len(filepaths)}",
+                                },
+                            )
+                        
                         if verbose:
                             print(f"Completed {Path(filepath).name} "
                                   f"({len(results_dict)}/{len(filepaths)})")
@@ -161,6 +205,16 @@ class BatchRingDownAnalyzer:
                             print(f"  CRLB std: {result['crlb_std_f']:.6e} Hz")
                     except Exception as e:
                         errors.append((filepath, e))
+                        logger.error(
+                            "file_processing_error",
+                            extra={
+                                "event": "file_processing_error",
+                                "filepath": str(filepath),
+                                "error_type": type(e).__name__,
+                                "error_msg": str(e),
+                            },
+                            exc_info=True,
+                        )
                         if verbose:
                             print(f"  Error processing {Path(filepath).name}: {e}")
                             import traceback
@@ -169,8 +223,27 @@ class BatchRingDownAnalyzer:
             # Reconstruct results in original order
             self.results = [results_dict[i] for i in sorted(results_dict.keys())]
             
-            if errors and verbose:
-                print(f"\n{len(errors)} file(s) failed to process")
+            if errors:
+                logger.warning(
+                    "batch_processing_errors",
+                    extra={
+                        "event": "batch_processing_errors",
+                        "n_errors": len(errors),
+                        "n_total": len(filepaths),
+                    },
+                )
+                if verbose:
+                    print(f"\n{len(errors)} file(s) failed to process")
+        
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "batch_processing_complete",
+                extra={
+                    "event": "batch_processing_complete",
+                    "n_successful": len(self.results),
+                    "n_total": len(filepaths),
+                },
+            )
         
         if verbose:
             print(f"\nSuccessfully processed {len(self.results)} files")
@@ -208,6 +281,19 @@ class BatchRingDownAnalyzer:
         csv_files = sorted(glob.glob(str(Path(directory) / f"{pattern}.csv")))
         mat_files = sorted(glob.glob(str(Path(directory) / f"{pattern}.mat")))
         all_files = csv_files + mat_files
+        
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "directory_scan_complete",
+                extra={
+                    "event": "directory_scan_complete",
+                    "directory": str(directory),
+                    "pattern": pattern,
+                    "n_csv": len(csv_files),
+                    "n_mat": len(mat_files),
+                    "n_total": len(all_files),
+                },
+            )
         
         if verbose:
             print(f"Found {len(csv_files)} CSV files and {len(mat_files)} MAT files")

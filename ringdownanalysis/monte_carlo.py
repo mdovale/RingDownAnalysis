@@ -2,6 +2,7 @@
 Monte Carlo analysis for comparing frequency estimation methods.
 """
 
+import logging
 import numpy as np
 from typing import Dict, Optional
 try:
@@ -10,6 +11,8 @@ try:
     HAS_MULTIPROCESSING = True
 except ImportError:
     HAS_MULTIPROCESSING = False
+
+logger = logging.getLogger(__name__)
 
 try:
     from tqdm import tqdm
@@ -50,6 +53,16 @@ def _process_single_trial(args):
     try:
         _, x, _ = signal.generate(rng=rng)
     except Exception as e:
+        if logger.isEnabledFor(logging.WARNING):
+            logger.warning(
+                "mc_trial_signal_generation_failed",
+                extra={
+                    "event": "mc_trial_signal_generation_failed",
+                    "trial_idx": trial_idx,
+                    "error_type": type(e).__name__,
+                    "error_msg": str(e),
+                },
+            )
         return (trial_idx, None, None, {"generate": False, "error": str(e)})
     
     errors = {}
@@ -63,6 +76,15 @@ def _process_single_trial(args):
     except Exception as e:
         errors["nls"] = None
         results["nls"] = False
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "mc_trial_nls_failed",
+                extra={
+                    "event": "mc_trial_nls_failed",
+                    "trial_idx": trial_idx,
+                    "error_type": type(e).__name__,
+                },
+            )
     
     try:
         f_hat_dft = dft_estimator.estimate(x, signal.fs)
@@ -71,6 +93,15 @@ def _process_single_trial(args):
     except Exception as e:
         errors["dft"] = None
         results["dft"] = False
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "mc_trial_dft_failed",
+                extra={
+                    "event": "mc_trial_dft_failed",
+                    "trial_idx": trial_idx,
+                    "error_type": type(e).__name__,
+                },
+            )
     
     return (trial_idx, errors["nls"], errors["dft"], results)
 
@@ -162,6 +193,24 @@ class MonteCarloAnalyzer:
         # Use parallel processing if available
         use_parallel = HAS_MULTIPROCESSING and n_mc > 10
         
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "mc_analysis_start",
+                extra={
+                    "event": "mc_analysis_start",
+                    "n_trials": n_mc,
+                    "f0": float(f0),
+                    "fs": float(fs),
+                    "N": int(N),
+                    "snr_db": float(snr_db),
+                    "Q": float(Q),
+                    "tau": float(tau),
+                    "crlb_std": float(crlb_std) if np.isfinite(crlb_std) else None,
+                    "use_parallel": use_parallel,
+                    "n_workers": n_workers if use_parallel else 1,
+                },
+            )
+        
         if use_parallel:
             if n_workers is None:
                 n_workers = mp.cpu_count()
@@ -218,12 +267,30 @@ class MonteCarloAnalyzer:
                         except FutureTimeoutError:
                             timeout_count += 1
                             trial_idx = futures[future]
+                            logger.warning(
+                                "mc_trial_timeout",
+                                extra={
+                                    "event": "mc_trial_timeout",
+                                    "trial_idx": trial_idx,
+                                    "timeout": timeout_per_trial,
+                                },
+                            )
                             print(f"\n  Warning: Trial {trial_idx} timed out after {timeout_per_trial}s")
                             errors_dict[trial_idx] = {"nls": None, "dft": None}
                             failure_counts["nls"] += 1
                             failure_counts["dft"] += 1
                         except Exception as e:
                             trial_idx = futures[future]
+                            logger.error(
+                                "mc_trial_error",
+                                extra={
+                                    "event": "mc_trial_error",
+                                    "trial_idx": trial_idx,
+                                    "error_type": type(e).__name__,
+                                    "error_msg": str(e),
+                                },
+                                exc_info=True,
+                            )
                             print(f"\n  Warning: Trial {trial_idx} failed with error: {e}")
                             errors_dict[trial_idx] = {"nls": None, "dft": None}
                             failure_counts["nls"] += 1
@@ -232,6 +299,14 @@ class MonteCarloAnalyzer:
                         pbar.update(1)
                 
                 if timeout_count > 0:
+                    logger.warning(
+                        "mc_timeouts_summary",
+                        extra={
+                            "event": "mc_timeouts_summary",
+                            "n_timeouts": timeout_count,
+                            "n_total": n_mc,
+                        },
+                    )
                     print(f"\n  Total timeouts: {timeout_count} out of {n_mc} trials")
         else:
             if HAS_TQDM:
@@ -263,6 +338,15 @@ class MonteCarloAnalyzer:
         
         # Report failures
         if any(failure_counts.values()):
+            logger.warning(
+                "mc_failures_summary",
+                extra={
+                    "event": "mc_failures_summary",
+                    "nls_failures": failure_counts["nls"],
+                    "dft_failures": failure_counts["dft"],
+                    "n_total": n_mc,
+                },
+            )
             print("\nWarnings:")
             for method, count in failure_counts.items():
                 if count > 0:
@@ -281,6 +365,20 @@ class MonteCarloAnalyzer:
                 "rmse": np.sqrt(np.mean(errors_dft**2)) if len(errors_dft) > 0 else np.nan,
             },
         }
+        
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "mc_analysis_complete",
+                extra={
+                    "event": "mc_analysis_complete",
+                    "n_trials": n_mc,
+                    "nls_std": float(stats['nls']['std']) if not np.isnan(stats['nls']['std']) else None,
+                    "nls_bias": float(stats['nls']['mean']) if not np.isnan(stats['nls']['mean']) else None,
+                    "dft_std": float(stats['dft']['std']) if not np.isnan(stats['dft']['std']) else None,
+                    "dft_bias": float(stats['dft']['mean']) if not np.isnan(stats['dft']['mean']) else None,
+                    "crlb_std": float(crlb_std) if np.isfinite(crlb_std) else None,
+                },
+            )
         
         print("\nResults:")
         print(f"  NLS:  std={stats['nls']['std']:.6e} Hz, bias={stats['nls']['mean']:.6e} Hz")

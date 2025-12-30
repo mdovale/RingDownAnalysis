@@ -2,12 +2,15 @@
 Data loading utilities for ring-down measurement files.
 """
 
+import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Tuple
 from scipy.io import loadmat
 from scipy.signal import detrend
+
+logger = logging.getLogger(__name__)
 
 
 class RingDownDataLoader:
@@ -69,9 +72,25 @@ class RingDownDataLoader:
                 skipinitialspace=True,  # Skip whitespace after delimiter
             )
         except (pd.errors.EmptyDataError, ValueError) as e:
+            logger.error(
+                "csv_load_failed",
+                extra={
+                    "event": "csv_load_failed",
+                    "filepath": str(filepath),
+                    "error_type": type(e).__name__,
+                    "error_msg": str(e),
+                },
+            )
             raise ValueError(f"No valid data lines found in CSV file: {e}")
         
         if df.empty:
+            logger.error(
+                "csv_empty",
+                extra={
+                    "event": "csv_empty",
+                    "filepath": str(filepath),
+                },
+            )
             raise ValueError("No valid data lines found in CSV file")
         
         # Extract time and phase columns
@@ -83,6 +102,17 @@ class RingDownDataLoader:
         
         # Detrend phase data
         data = detrend(data_raw, type='constant')
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "csv_loaded",
+                extra={
+                    "event": "csv_loaded",
+                    "filepath": str(filepath),
+                    "n_samples": len(t),
+                    "duration": float(t[-1]) if len(t) > 0 else 0.0,
+                },
+            )
         
         return t, data
     
@@ -105,10 +135,34 @@ class RingDownDataLoader:
         V2 : np.ndarray or None
             Phase in cycles (detrended) or None if not available
         """
-        mat_data = loadmat(filepath)
+        try:
+            mat_data = loadmat(filepath)
+        except Exception as e:
+            logger.error(
+                "mat_load_failed",
+                extra={
+                    "event": "mat_load_failed",
+                    "filepath": str(filepath),
+                    "error_type": type(e).__name__,
+                    "error_msg": str(e),
+                },
+            )
+            raise
         
         # Access the moku.data structure
-        moku_data = mat_data['moku']['data'][0, 0]
+        try:
+            moku_data = mat_data['moku']['data'][0, 0]
+        except (KeyError, IndexError, TypeError) as e:
+            logger.error(
+                "mat_structure_invalid",
+                extra={
+                    "event": "mat_structure_invalid",
+                    "filepath": str(filepath),
+                    "error_type": type(e).__name__,
+                    "error_msg": str(e),
+                },
+            )
+            raise ValueError(f"Invalid MAT file structure: {e}")
         
         # Extract time (column 1, index 0) and phase (column 4, index 3)
         t_raw = moku_data[:, 0].flatten()
@@ -125,6 +179,18 @@ class RingDownDataLoader:
         
         # Detrend phase data
         data = detrend(data_raw, type='constant')
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "mat_loaded",
+                extra={
+                    "event": "mat_loaded",
+                    "filepath": str(filepath),
+                    "n_samples": len(t),
+                    "duration": float(t[-1]) if len(t) > 0 else 0.0,
+                    "has_v2": V2 is not None,
+                },
+            )
         
         return t, data, V2
     
@@ -152,12 +218,43 @@ class RingDownDataLoader:
         path = Path(filepath)
         suffix = path.suffix.lower()
         
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "file_load_start",
+                extra={
+                    "event": "file_load_start",
+                    "filepath": str(filepath),
+                    "file_type": suffix,
+                },
+            )
+        
         if suffix == '.csv':
             t, data = RingDownDataLoader.load_csv(filepath)
-            return t, data, None, 'CSV'
+            file_type = 'CSV'
         elif suffix == '.mat':
             t, data, V2 = RingDownDataLoader.load_mat(filepath)
-            return t, data, V2, 'MAT'
+            file_type = 'MAT'
         else:
+            logger.error(
+                "unsupported_format",
+                extra={
+                    "event": "unsupported_format",
+                    "filepath": str(filepath),
+                    "suffix": suffix,
+                },
+            )
             raise ValueError(f"Unsupported file format: {suffix}. Expected .csv or .mat")
+        
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "file_load_complete",
+                extra={
+                    "event": "file_load_complete",
+                    "filepath": str(filepath),
+                    "file_type": file_type,
+                    "n_samples": len(t),
+                },
+            )
+        
+        return t, data, V2, file_type
 

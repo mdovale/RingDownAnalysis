@@ -9,6 +9,8 @@ This package provides both object-oriented and function-based APIs for:
 - Real data analysis
 """
 
+import logging
+
 # Core classes
 from .signal import RingDownSignal
 from .estimators import FrequencyEstimator, NLSFrequencyEstimator, DFTFrequencyEstimator
@@ -17,6 +19,10 @@ from .data_loader import RingDownDataLoader
 from .analyzer import RingDownAnalyzer
 from .monte_carlo import MonteCarloAnalyzer
 from .batch_analyzer import BatchRingDownAnalyzer
+
+# Configure package logger
+_logger = logging.getLogger(__name__)
+_logger.addHandler(logging.NullHandler())  # Default: no output unless configured
 
 # Compatibility layer (legacy function-based API)
 from .compat import (

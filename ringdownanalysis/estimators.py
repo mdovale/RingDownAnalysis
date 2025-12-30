@@ -2,11 +2,14 @@
 Frequency estimation methods for ring-down signals.
 """
 
+import logging
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Optional
 from scipy.optimize import least_squares, curve_fit
 from scipy.signal.windows import kaiser
+
+logger = logging.getLogger(__name__)
 
 
 class FrequencyEstimator(ABC):
@@ -156,7 +159,17 @@ def _fit_lorentzian_to_peak(
         delta = np.clip(delta, -1.0, 1.0)
         
         return delta
-    except (RuntimeError, ValueError, np.linalg.LinAlgError):
+    except (RuntimeError, ValueError, np.linalg.LinAlgError) as e:
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "lorentzian_fit_failed",
+                extra={
+                    "event": "lorentzian_fit_failed",
+                    "error_type": type(e).__name__,
+                    "k": int(k),
+                    "n_points": n_points_scaled,
+                },
+            )
         return 0.0
 
 
@@ -293,6 +306,16 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             )
             
             if not res.success:
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        "nls_estimation_failed",
+                        extra={
+                            "event": "nls_estimation_failed",
+                            "method": "nls_tau_known",
+                            "message": res.message,
+                            "nfev": res.nfev,
+                        },
+                    )
                 return f0_init
             
             _, f_hat, _, _ = res.x
@@ -324,12 +347,32 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             )
             
             if not res.success:
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        "nls_estimation_failed",
+                        extra={
+                            "event": "nls_estimation_failed",
+                            "method": "nls_tau_unknown",
+                            "message": res.message,
+                            "nfev": res.nfev,
+                        },
+                    )
                 return f0_init
             
             _, f_hat, _, _, _ = res.x
         
         # Sanity check
         if f_hat < 0 or f_hat > 0.5 * fs or abs(f_hat - f0_init) > 0.5 * f0_init:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "nls_sanity_check_failed",
+                    extra={
+                        "event": "nls_sanity_check_failed",
+                        "f_hat": float(f_hat),
+                        "f0_init": float(f0_init),
+                        "fs": float(fs),
+                    },
+                )
             return f0_init
         
         return float(f_hat)
@@ -424,11 +467,32 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         
         # Guard against edges
         if k <= 0 or k >= len(P) - 1:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "dft_peak_at_edge",
+                    extra={
+                        "event": "dft_peak_at_edge",
+                        "k": int(k),
+                        "n_bins": len(P),
+                    },
+                )
             return float(k * fs / N_dft)
         
         # Fit Lorentzian to power spectrum around peak
         delta = _fit_lorentzian_to_peak(P, k, fs, N_dft, n_points=self.lorentzian_points)
         
         f_hat = (k + delta) * fs / N_dft
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "dft_estimated",
+                extra={
+                    "event": "dft_estimated",
+                    "f_hat": float(f_hat),
+                    "k": int(k),
+                    "delta": float(delta),
+                },
+            )
+        
         return float(f_hat)
 
