@@ -22,8 +22,9 @@ from ringdownanalysis import (
     estimate_freq_dft,
     monte_carlo_analysis,
 )
-# Import plotting functions from legacy module
-from ringdownanalysis.legacy_ring_down_mc import (
+# Import plotting functions and style (style applies automatically on import)
+from ringdownanalysis import plots
+from ringdownanalysis.plots import (
     plot_individual_results,
     plot_aggregate_results,
     plot_performance_comparison,
@@ -193,6 +194,9 @@ def example_generate_latex_figures():
     - Q = 10^4 (tau = 636.6 s)
     - n_mc = 100 trials
     """
+    # Apply consistent plotting style
+    plots.apply_plotting_style()
+    
     print("=" * 70)
     print("Example 7: Generate LaTeX Document Figures")
     print("=" * 70)
@@ -238,19 +242,22 @@ def example_generate_latex_figures():
     print("=" * 70)
     
     # Generate and save frequency estimation figures
-    fig1 = plot_individual_results(results)
+    axes1 = plot_individual_results(results)
+    fig1 = axes1[0].figure if isinstance(axes1, np.ndarray) else axes1.figure
     fig1_path = output_dir / "freq_estimation_ringdown_v6_individual.pdf"
     fig1.savefig(fig1_path, bbox_inches="tight")
     print(f"  Saved: {fig1_path}")
     plt.close(fig1)
     
-    fig2 = plot_aggregate_results(results)
+    axes2 = plot_aggregate_results(results)
+    fig2 = axes2[0].figure if isinstance(axes2, np.ndarray) else axes2.figure
     fig2_path = output_dir / "freq_estimation_ringdown_v6_aggregate.pdf"
     fig2.savefig(fig2_path, bbox_inches="tight")
     print(f"  Saved: {fig2_path}")
     plt.close(fig2)
     
-    fig3 = plot_performance_comparison(results)
+    axes3 = plot_performance_comparison(results)
+    fig3 = axes3[0].figure if isinstance(axes3, np.ndarray) else axes3.figure
     fig3_path = output_dir / "freq_estimation_ringdown_v6_performance.pdf"
     fig3.savefig(fig3_path, bbox_inches="tight")
     print(f"  Saved: {fig3_path}")
@@ -258,13 +265,15 @@ def example_generate_latex_figures():
     
     # Generate and save Q estimation figures
     if 'errors_q_nls' in results and len(results['errors_q_nls']) > 0:
-        fig4 = plot_q_individual_results(results)
+        axes4 = plot_q_individual_results(results)
+        fig4 = axes4.figure  # Single axis
         fig4_path = output_dir / "q_estimation_ringdown_v6_individual.pdf"
         fig4.savefig(fig4_path, bbox_inches="tight")
         print(f"  Saved: {fig4_path}")
         plt.close(fig4)
         
-        fig5 = plot_q_performance_comparison(results)
+        axes5 = plot_q_performance_comparison(results)
+        fig5 = axes5[0].figure if isinstance(axes5, np.ndarray) else axes5.figure
         fig5_path = output_dir / "q_estimation_ringdown_v6_performance.pdf"
         fig5.savefig(fig5_path, bbox_inches="tight")
         print(f"  Saved: {fig5_path}")

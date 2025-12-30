@@ -41,7 +41,49 @@ def get_default_rc():
         ),
     }
 
+# Legend styling parameters
+legend_params = {
+    "loc": "best",
+    "fontsize": 8,
+    "frameon": True,
+}
 
+def apply_legend(ax):
+    """Apply a consistent legend style to a Matplotlib Axes object.
+
+    Parameters
+    ----------
+    ax : Axes | list[Axes]
+        The Axes object(s) to which the legend will be applied.
+        If a list is provided, the legend is applied to the last Axes.
+
+    Returns
+    -------
+    Legend | None
+        The created Legend object, or None if no legend could be created
+        (e.g., no labels exist on the axes).
+
+    Notes
+    -----
+    The legend style is defined by the module-level `legend_params` dictionary.
+    """
+    if isinstance(ax, list):
+        ax = ax[-1]
+
+    legend = ax.legend(**legend_params)
+    if legend is not None:  # Check if a legend was actually created
+        frame = legend.get_frame()
+        frame.set_alpha(1.0)
+        frame.set_edgecolor("black")
+        frame.set_linewidth(0.7)
+        try:
+            frame.set_boxstyle("Square")
+        except AttributeError:
+            # Safe fallback for older matplotlib versions
+            pass
+    return legend
+
+    
 def apply_plotting_style():
     """
     Apply the default plotting style to matplotlib rcParams.
@@ -56,6 +98,8 @@ def apply_plotting_style():
 
 # Apply default styles automatically when module is imported
 apply_plotting_style()
+default_rc = get_default_rc()
+default_figsize = (7, 4.66)
 
 
 # ============================================================================
@@ -70,7 +114,7 @@ def plot_individual_results(results: dict, ax=None, figsize=None, dpi=None, *arg
     
     if ax is None:
         if figsize is None:
-            figsize = (10, 8)
+            figsize = default_figsize
         fig, axes = plt.subplots(2, 1, figsize=figsize, dpi=dpi)
     else:
         # If ax is provided, it should be an array of axes
@@ -88,7 +132,7 @@ def plot_individual_results(results: dict, ax=None, figsize=None, dpi=None, *arg
     ax_plot.set_xlabel("Frequency error (Hz)")
     ax_plot.set_ylabel("Probability density")
     ax_plot.set_title(f"Nonlinear Least Squares (NLS)\nstd = {results['stats']['nls']['std']:.6e} Hz")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3)
     
     # DFT
@@ -100,7 +144,7 @@ def plot_individual_results(results: dict, ax=None, figsize=None, dpi=None, *arg
     ax_plot.set_xlabel("Frequency error (Hz)")
     ax_plot.set_ylabel("Probability density")
     ax_plot.set_title(f"Optimized DFT with Lorentzian Fitting\nstd = {results['stats']['dft']['std']:.6e} Hz")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3)
     
     if ax is None:
@@ -116,7 +160,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     
     if ax is None:
         if figsize is None:
-            figsize = (14, 5)
+            figsize = default_figsize
         fig, axes = plt.subplots(1, 2, figsize=figsize, dpi=dpi)
     else:
         # If ax is provided, it should be an array of axes
@@ -151,7 +195,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     ax_plot.set_xlabel("Frequency error (Hz)")
     ax_plot.set_ylabel("Probability density")
     ax_plot.set_title("Error Distribution Comparison")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3)
     
     # Box plot comparison
@@ -166,7 +210,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     ax_plot.axhline(-crlb_std, color="g", linestyle="--", linewidth=2)
     ax_plot.set_ylabel("Frequency error (Hz)")
     ax_plot.set_title("Error Distribution Comparison (Box Plot)")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3, axis="y")
     
     if ax is None:
@@ -185,7 +229,7 @@ def plot_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, 
     
     if ax is None:
         if figsize is None:
-            figsize = (14, 5)
+            figsize = default_figsize
         fig, axes = plt.subplots(1, 2, figsize=figsize, dpi=dpi)
     else:
         # If ax is provided, it should be an array of axes
@@ -204,7 +248,7 @@ def plot_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, 
     ax_plot.set_ylabel("Standard deviation (Hz)")
     ax_plot.set_title("Frequency Estimation Uncertainty")
     ax_plot.set_yscale("log")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3, axis="y")
     
     # Efficiency comparison
@@ -215,7 +259,7 @@ def plot_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, 
     ax_plot.set_xticklabels(methods)
     ax_plot.set_ylabel("Efficiency (CRLB / std)")
     ax_plot.set_title("Statistical Efficiency")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3, axis="y")
     
     if ax is None:
@@ -229,7 +273,7 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
         # Return empty axes if no Q data
         if ax is None:
             if figsize is None:
-                figsize = (10, 6)
+                figsize = default_figsize
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
             plt.tight_layout()
         else:
@@ -245,7 +289,7 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
     created_fig = False
     if ax is None:
         if figsize is None:
-            figsize = (10, 6)
+            figsize = default_figsize
         fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
         created_fig = True
     else:
@@ -259,7 +303,7 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
     ax.set_xlabel("Q error")
     ax.set_ylabel("Probability density")
     ax.set_title(f"Nonlinear Least Squares (NLS) Q Estimation\nstd = {results['stats']['q_nls']['std']:.6e}")
-    ax.legend()
+    apply_legend(ax)
     ax.grid(True, alpha=0.3)
     
     if created_fig:
@@ -273,7 +317,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
         # Return empty axes if no Q data
         if ax is None:
             if figsize is None:
-                figsize = (10, 6)
+                figsize = default_figsize
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
             plt.tight_layout()
         else:
@@ -290,7 +334,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
         # Return empty axes if no CRLB data
         if ax is None:
             if figsize is None:
-                figsize = (10, 6)
+                figsize = default_figsize
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
             plt.tight_layout()
         else:
@@ -306,7 +350,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     
     if ax is None:
         if figsize is None:
-            figsize = (14, 5)
+            figsize = default_figsize
         fig, axes = plt.subplots(1, 2, figsize=figsize, dpi=dpi)
     else:
         # If ax is provided, it should be an array of axes
@@ -325,7 +369,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     ax_plot.set_ylabel("Standard deviation")
     ax_plot.set_title("Q Estimation Uncertainty")
     ax_plot.set_yscale("log")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3, axis="y")
     
     # Efficiency comparison
@@ -336,7 +380,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     ax_plot.set_xticklabels(methods)
     ax_plot.set_ylabel("Efficiency (CRLB / std)")
     ax_plot.set_title("Statistical Efficiency")
-    ax_plot.legend()
+    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3, axis="y")
     
     if ax is None:
