@@ -7,9 +7,10 @@ Provides functions for profiling critical code paths and analyzing bottlenecks.
 import cProfile
 import pstats
 import io
+import sys
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 import numpy as np
 
 from ringdownanalysis import (
@@ -67,7 +68,8 @@ class Profiler:
         
         # Capture stats output
         stream = io.StringIO()
-        stats.print_stats(top_n, stream=stream)
+        with redirect_stdout(stream):
+            stats.print_stats(top_n)
         stream.seek(0)
         
         # Parse output (simplified - pstats doesn't have a clean API for this)
@@ -131,7 +133,9 @@ class Profiler:
         
         bottlenecks = []
         stream = io.StringIO()
-        stats.print_stats(1000, stream=stream)  # Get many functions
+        # Redirect stdout to capture print_stats output
+        with redirect_stdout(stream):
+            stats.print_stats(1000)  # Get many functions
         stream.seek(0)
         lines = stream.readlines()
         
