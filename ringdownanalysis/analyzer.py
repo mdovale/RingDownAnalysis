@@ -22,7 +22,7 @@ class RingDownAnalyzer:
     Performs the following pipeline:
     1. Load data from file
     2. Estimate tau from full data using NLS
-    3. Crop data to 3*tau to avoid long noisy tail
+    3. Crop data to max_tau_multiplier*tau to avoid long noisy tail
     4. Estimate frequency using NLS and DFT methods
     5. Estimate noise parameters for CRLB calculation
     6. Calculate CRLB
@@ -152,9 +152,10 @@ class RingDownAnalyzer:
         data: np.ndarray,
         tau_est: float,
         min_samples: int = 100,
+        max_tau_multiplier: float = 1.0,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Crop data to 3*tau_est to avoid long noisy tail affecting frequency estimation.
+        Crop data to max_tau_multiplier*tau_est to avoid long noisy tail affecting frequency estimation.
         
         Parameters:
         -----------
@@ -166,13 +167,15 @@ class RingDownAnalyzer:
             Estimated tau value in seconds
         min_samples : int
             Minimum number of samples required. If cropped data is shorter, return original.
+        max_tau_multiplier : float
+            Multiplier for tau_est to determine maximum record length. Default is 1.0.
         
         Returns:
         --------
         (t_crop, data_cropped) : tuple
             Cropped time and signal arrays
         """
-        t_crop_max = 3.0 * tau_est
+        t_crop_max = max_tau_multiplier * tau_est
         crop_idx = t <= t_crop_max
         t_crop = t[crop_idx]
         data_cropped = data[crop_idx]
@@ -297,7 +300,7 @@ class RingDownAnalyzer:
         
         return A0_est, sigma_est
     
-    def analyze_file(self, filepath: str) -> Dict:
+    def analyze_file(self, filepath: str, max_tau_multiplier: float = 1.0) -> Dict:
         """
         Process a single data file and return analysis results.
         
@@ -305,6 +308,9 @@ class RingDownAnalyzer:
         -----------
         filepath : str
             Path to the data file
+        max_tau_multiplier : float
+            Multiplier for tau_est to determine maximum record length when cropping data.
+            Default is 1.0.
         
         Returns:
         --------
@@ -332,8 +338,8 @@ class RingDownAnalyzer:
         # Estimate tau from full data (using cached initial params)
         tau_est = self.estimate_tau(data, t, fs, initial_params=initial_params_full)
         
-        # Crop data to 3*tau_est
-        t_crop, data_cropped = self.crop_data_to_tau(t, data, tau_est, min_samples=1000)
+        # Crop data to max_tau_multiplier*tau_est
+        t_crop, data_cropped = self.crop_data_to_tau(t, data, tau_est, min_samples=1000, max_tau_multiplier=max_tau_multiplier)
         
         # Warn if cropped data is too short
         min_samples_for_analysis = 1000

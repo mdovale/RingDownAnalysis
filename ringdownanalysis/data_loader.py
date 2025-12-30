@@ -230,6 +230,7 @@ class RingDownDataLoader:
         
         if suffix == '.csv':
             t, data = RingDownDataLoader.load_csv(filepath)
+            V2 = None  # CSV files don't have V2 data
             file_type = 'CSV'
         elif suffix == '.mat':
             t, data, V2 = RingDownDataLoader.load_mat(filepath)
