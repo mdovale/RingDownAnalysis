@@ -123,10 +123,10 @@ def plot_individual_results(results: dict, ax=None, figsize=None, dpi=None, *arg
     
     # NLS
     ax_plot = axes[0]
-    ax_plot.hist(errors_nls, bins=30, density=True, alpha=0.7, edgecolor="black", *args, **kwargs)
-    ax_plot.axvline(0, color="r", linestyle="--", label="Zero error")
-    ax_plot.axvline(crlb_std, color="g", linestyle="--", label=f"CRLB std = {crlb_std:.2e}")
-    ax_plot.axvline(-crlb_std, color="g", linestyle="--")
+    ax_plot.hist(errors_nls, bins=30, density=True, color='blue', alpha=0.6, edgecolor="black", *args, **kwargs)
+    ax_plot.axvline(0, color="tomato", linestyle="--", label="Zero error")
+    ax_plot.axvline(crlb_std, color="lime", linestyle="--", label=f"CRLB std = {crlb_std:.2e}")
+    ax_plot.axvline(-crlb_std, color="lime", linestyle="--")
     ax_plot.set_xlabel("Frequency error (Hz)")
     ax_plot.set_ylabel("Probability density")
     ax_plot.set_title(f"Nonlinear Least Squares (NLS)\nstd = {results['stats']['nls']['std']:.6e} Hz")
@@ -135,10 +135,10 @@ def plot_individual_results(results: dict, ax=None, figsize=None, dpi=None, *arg
     
     # DFT
     ax_plot = axes[1]
-    ax_plot.hist(errors_dft, bins=30, density=True, alpha=0.7, edgecolor="black", *args, **kwargs)
-    ax_plot.axvline(0, color="r", linestyle="--", label="Zero error")
-    ax_plot.axvline(crlb_std, color="g", linestyle="--", label=f"CRLB std = {crlb_std:.2e}")
-    ax_plot.axvline(-crlb_std, color="g", linestyle="--")
+    ax_plot.hist(errors_dft, bins=30, density=True, color='blue', alpha=0.6, edgecolor="black", *args, **kwargs)
+    ax_plot.axvline(0, color="tomato", linestyle="--", label="Zero error")
+    ax_plot.axvline(crlb_std, color="lime", linestyle="--", label=f"CRLB std = {crlb_std:.2e}")
+    ax_plot.axvline(-crlb_std, color="lime", linestyle="--")
     ax_plot.set_xlabel("Frequency error (Hz)")
     ax_plot.set_ylabel("Probability density")
     ax_plot.set_title(f"DFT std = {results['stats']['dft']['std']:.6e} Hz")
@@ -159,7 +159,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     if ax is None:
         if figsize is None:
             figsize = (6.5, 4.66)
-        fig, axes = plt.subplots(2, 1, figsize=figsize, dpi=dpi, gridspec_kw={'height_ratios': [1, 0.33]})
+        fig, axes = plt.subplots(2, 1, figsize=figsize, dpi=dpi, gridspec_kw={'height_ratios': [1, 0.4]})
     else:
         # If ax is provided, it should be an array of axes
         if not isinstance(ax, np.ndarray) or ax.size != 2:
@@ -173,6 +173,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
         errors_nls,
         bins=30,
         density=True,
+        color='blue',
         alpha=0.6,
         label=f"NLS (std={results['stats']['nls']['std']:.2e})",
         edgecolor="black",
@@ -182,14 +183,15 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
         errors_dft,
         bins=30,
         density=True,
+        color='blue',
         alpha=0.6,
         label=f"DFT (std={results['stats']['dft']['std']:.2e})",
         edgecolor="black",
         *args, **kwargs
     )
-    ax_plot.axvline(0, color="r", linestyle="--", linewidth=2, label="Zero error")
-    ax_plot.axvline(crlb_std, color="g", linestyle="--", linewidth=2, label=f"CRLB std = {crlb_std:.2e}")
-    ax_plot.axvline(-crlb_std, color="g", linestyle="--", linewidth=2)
+    ax_plot.axvline(0, color="tomato", linestyle="--", linewidth=2, label="Zero error")
+    ax_plot.axvline(crlb_std, color="lime", linestyle="--", linewidth=2, label=f"CRLB std = {crlb_std:.2e}")
+    ax_plot.axvline(-crlb_std, color="lime", linestyle="--", linewidth=2)
     ax_plot.set_xlabel("Frequency error (Hz)")
     ax_plot.set_ylabel("Probability density")
     ax_plot.set_title("Error Distribution Comparison")
@@ -203,11 +205,10 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     for patch in bp["boxes"]:
         patch.set_facecolor("lightblue")
         patch.set_alpha(0.7)
-    ax_plot.axhline(0, color="r", linestyle="--", linewidth=2, label="Zero error")
-    ax_plot.axhline(crlb_std, color="g", linestyle="--", linewidth=2, label=f"CRLB std = {crlb_std:.2e}")
-    ax_plot.axhline(-crlb_std, color="g", linestyle="--", linewidth=2)
+    ax_plot.axhline(0, color="tomato", linestyle="--", linewidth=2, label="Zero error")
+    ax_plot.axhline(crlb_std, color="lime", linestyle="--", linewidth=2, label=f"CRLB std = {crlb_std:.2e}")
+    ax_plot.axhline(-crlb_std, color="lime", linestyle="--", linewidth=2)
     ax_plot.set_ylabel("Frequency error (Hz)")
-    apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3, axis="y")
     
     if ax is None:
@@ -239,7 +240,7 @@ def plot_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, 
     ax_plot = axes[0]
     x_pos = np.arange(len(methods))
     bars = ax_plot.bar(x_pos, stds, alpha=0.7, edgecolor="black", *args, **kwargs)
-    ax_plot.axhline(crlb_std, color="g", linestyle="--", linewidth=2, label=f"CRLB = {crlb_std:.2e}")
+    ax_plot.axhline(crlb_std, color="lime", linestyle="--", linewidth=2, label=f"CRLB = {crlb_std:.2e}")
     ax_plot.set_xticks(x_pos)
     ax_plot.set_xticklabels(methods)
     ax_plot.set_ylabel("Standard deviation (Hz)")
@@ -251,7 +252,7 @@ def plot_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, 
     # Efficiency comparison
     ax_plot = axes[1]
     bars = ax_plot.bar(x_pos, efficiencies, alpha=0.7, edgecolor="black", *args, **kwargs)
-    ax_plot.axhline(1.0, color="r", linestyle="--", linewidth=2, label="CRLB (efficiency = 1)")
+    ax_plot.axhline(1.0, color="tomato", linestyle="--", linewidth=2, label="CRLB (efficiency = 1)")
     ax_plot.set_xticks(x_pos)
     ax_plot.set_xticklabels(methods)
     ax_plot.set_ylabel("Efficiency (CRLB / std)")
@@ -292,11 +293,11 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
     else:
         fig = ax.figure
     
-    ax.hist(errors_q_nls, bins=30, density=True, alpha=0.7, edgecolor="black", *args, **kwargs)
-    ax.axvline(0, color="r", linestyle="--", label="Zero error")
+    ax.hist(errors_q_nls, bins=30, density=True, color='blue', alpha=0.6, edgecolor="black", *args, **kwargs)
+    ax.axvline(0, color="tomato", linestyle="--", label="Zero error")
     if crlb_std_q is not None and np.isfinite(crlb_std_q):
-        ax.axvline(crlb_std_q, color="g", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
-        ax.axvline(-crlb_std_q, color="g", linestyle="--")
+        ax.axvline(crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
+        ax.axvline(-crlb_std_q, color="lime", linestyle="--")
     ax.set_xlabel("Q error")
     ax.set_ylabel("Probability density")
     ax.set_title(f"Nonlinear Least Squares (NLS) Q Estimation\nstd = {results['stats']['q_nls']['std']:.6e}")
@@ -360,7 +361,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     ax_plot = axes[0]
     x_pos = np.arange(len(methods))
     bars = ax_plot.bar(x_pos, stds, alpha=0.7, edgecolor="black", *args, **kwargs)
-    ax_plot.axhline(crlb_std_q, color="g", linestyle="--", linewidth=2, label=f"CRLB = {crlb_std_q:.2e}")
+    ax_plot.axhline(crlb_std_q, color="lime", linestyle="--", linewidth=2, label=f"CRLB = {crlb_std_q:.2e}")
     ax_plot.set_xticks(x_pos)
     ax_plot.set_xticklabels(methods)
     ax_plot.set_ylabel("Standard deviation")
@@ -372,7 +373,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     # Efficiency comparison
     ax_plot = axes[1]
     bars = ax_plot.bar(x_pos, efficiencies, alpha=0.7, edgecolor="black", *args, **kwargs)
-    ax_plot.axhline(1.0, color="r", linestyle="--", linewidth=2, label="CRLB (efficiency = 1)")
+    ax_plot.axhline(1.0, color="tomato", linestyle="--", linewidth=2, label="CRLB (efficiency = 1)")
     ax_plot.set_xticks(x_pos)
     ax_plot.set_xticklabels(methods)
     ax_plot.set_ylabel("Efficiency (CRLB / std)")
