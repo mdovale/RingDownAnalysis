@@ -35,6 +35,15 @@ from .compat import (
     monte_carlo_analysis,
 )
 
+# Plotting functions
+from .plots import (
+    plot_individual_results,
+    plot_aggregate_results,
+    plot_performance_comparison,
+    plot_q_individual_results,
+    plot_q_performance_comparison,
+)
+
 __all__ = [
     # Classes
     'RingDownSignal',
@@ -54,5 +63,11 @@ __all__ = [
     'estimate_freq_dft',
     'estimate_freq_dft_optimized',
     'monte_carlo_analysis',
+    # Plotting functions
+    'plot_individual_results',
+    'plot_aggregate_results',
+    'plot_performance_comparison',
+    'plot_q_individual_results',
+    'plot_q_performance_comparison',
 ]
 
