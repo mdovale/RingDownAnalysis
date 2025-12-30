@@ -331,33 +331,62 @@ class BatchRingDownAnalyzer:
         # #region agent log
         with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
             import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'A,C,E','location':'batch_analyzer.py:232','message':'Before computing stats on pairwise diffs','data':{'n_realizations':n_realizations,'nls_pairwise_diffs_len':len(nls_pairwise_diffs),'dft_pairwise_diffs_len':len(dft_pairwise_diffs),'nls_pairwise_diffs_empty':len(nls_pairwise_diffs)==0},'timestamp':int(time.time()*1000)})+'\n')
+            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'A,C,E','location':'batch_analyzer.py:328','message':'Before computing stats on pairwise diffs','data':{'n_realizations':n_realizations,'nls_pairwise_diffs_len':len(nls_pairwise_diffs),'dft_pairwise_diffs_len':len(dft_pairwise_diffs),'nls_pairwise_diffs_empty':len(nls_pairwise_diffs)==0,'nls_pairwise_diffs_shape':nls_pairwise_diffs.shape},'timestamp':int(time.time()*1000)})+'\n')
         # #endregion
         
         # Statistics for pairwise differences
-        nls_stats = {
-            'mean': np.mean(nls_pairwise_diffs),
-            'median': np.median(nls_pairwise_diffs),
-            'std': np.std(nls_pairwise_diffs),
-            'min': np.min(nls_pairwise_diffs),
-            'max': np.max(nls_pairwise_diffs),
-        }
+        # Handle empty arrays to avoid RuntimeWarning
+        # #region agent log
+        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
+            import json, time
+            f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'A,C','location':'batch_analyzer.py:339','message':'About to compute stats on pairwise diffs','data':{'array_len':len(nls_pairwise_diffs),'array_empty':len(nls_pairwise_diffs)==0,'will_handle_empty':len(nls_pairwise_diffs)==0},'timestamp':int(time.time()*1000)})+'\n')
+        # #endregion
+        if len(nls_pairwise_diffs) > 0:
+            nls_stats = {
+                'mean': np.mean(nls_pairwise_diffs),
+                'median': np.median(nls_pairwise_diffs),
+                'std': np.std(nls_pairwise_diffs),
+                'min': np.min(nls_pairwise_diffs),
+                'max': np.max(nls_pairwise_diffs),
+            }
+        else:
+            nls_stats = {
+                'mean': np.nan,
+                'median': np.nan,
+                'std': np.nan,
+                'min': np.nan,
+                'max': np.nan,
+            }
         
         # #region agent log
         with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
             import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'A,C,E','location':'batch_analyzer.py:243','message':'After computing nls_stats','data':{'nls_stats_mean':float(nls_stats['mean']) if np.isfinite(nls_stats['mean']) else None,'nls_stats_mean_type':str(type(nls_stats['mean']))},'timestamp':int(time.time()*1000)})+'\n')
+            f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'A,C,E','location':'batch_analyzer.py:355','message':'After computing nls_stats','data':{'nls_stats_mean':float(nls_stats['mean']) if np.isfinite(nls_stats['mean']) else None,'nls_stats_mean_type':str(type(nls_stats['mean']))},'timestamp':int(time.time()*1000)})+'\n')
         # #endregion
         
-        dft_stats = {
-            'mean': np.mean(dft_pairwise_diffs),
-            'median': np.median(dft_pairwise_diffs),
-            'std': np.std(dft_pairwise_diffs),
-            'min': np.min(dft_pairwise_diffs),
-            'max': np.max(dft_pairwise_diffs),
-        }
+        if len(dft_pairwise_diffs) > 0:
+            dft_stats = {
+                'mean': np.mean(dft_pairwise_diffs),
+                'median': np.median(dft_pairwise_diffs),
+                'std': np.std(dft_pairwise_diffs),
+                'min': np.min(dft_pairwise_diffs),
+                'max': np.max(dft_pairwise_diffs),
+            }
+        else:
+            dft_stats = {
+                'mean': np.nan,
+                'median': np.nan,
+                'std': np.nan,
+                'min': np.nan,
+                'max': np.nan,
+            }
         
         # Statistics across realizations
+        # #region agent log
+        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
+            import json, time
+            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'B,D','location':'batch_analyzer.py:361','message':'Before computing nls_mean','data':{'f_nls_all':f_nls_all.tolist(),'f_nls_all_repr':[repr(x) for x in f_nls_all]},'timestamp':int(time.time()*1000)})+'\n')
+        # #endregion
         nls_mean = np.mean(f_nls_all)
         dft_mean = np.mean(f_dft_all)
         nls_std_across = np.std(f_nls_all)
@@ -366,7 +395,10 @@ class BatchRingDownAnalyzer:
         # #region agent log
         with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
             import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'B,D','location':'batch_analyzer.py:256','message':'Computed nls_mean for comparison','data':{'nls_mean':float(nls_mean),'nls_mean_repr':repr(nls_mean),'f_nls_all':f_nls_all.tolist(),'expected':5.1,'diff_from_expected':float(abs(nls_mean - 5.1))},'timestamp':int(time.time()*1000)})+'\n')
+            is_close_result = np.isclose(nls_mean, 5.1)
+            # Convert numpy bool to Python bool for JSON serialization
+            is_close_python_bool = bool(is_close_result.item() if hasattr(is_close_result, 'item') else is_close_result)
+            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'B,D','location':'batch_analyzer.py:366','message':'Computed nls_mean for comparison','data':{'nls_mean':float(nls_mean),'nls_mean_repr':repr(nls_mean),'nls_mean_hex':nls_mean.hex() if hasattr(nls_mean,'hex') else None,'f_nls_all':f_nls_all.tolist(),'expected':5.1,'diff_from_expected':float(abs(nls_mean - 5.1)),'is_close_to_5_1':is_close_python_bool},'timestamp':int(time.time()*1000)})+'\n')
         # #endregion
         
         nls_cv = nls_std_across / nls_mean if nls_mean > 0 else np.inf
