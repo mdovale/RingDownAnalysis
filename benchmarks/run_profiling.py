@@ -46,8 +46,8 @@ def main():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default='profiles',
-        help='Directory to save profile stats (default: profiles)'
+        default='benchmarks/results',
+        help='Directory to save profile stats (default: benchmarks/results)'
     )
     parser.add_argument(
         '--min-time',
