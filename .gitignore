@@ -1,5 +1,6 @@
-# Data folder - ignore everything
+# Project specific folders
 data/
+benchmarks/results/
 
 # Image formats
 *.pdf
