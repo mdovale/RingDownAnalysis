@@ -16,6 +16,7 @@ from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
 from .analyzer import RingDownAnalyzer
 from .monte_carlo import MonteCarloAnalyzer
+from .batch_analyzer import BatchRingDownAnalyzer
 
 # Compatibility layer (legacy function-based API)
 from .compat import (
@@ -38,6 +39,7 @@ __all__ = [
     'RingDownDataLoader',
     'RingDownAnalyzer',
     'MonteCarloAnalyzer',
+    'BatchRingDownAnalyzer',
     # Compatibility functions
     'db_to_lin',
     'crlb_var_f_ringdown_explicit',
