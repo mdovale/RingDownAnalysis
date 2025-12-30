@@ -8,17 +8,17 @@ Usage:
 
 import argparse
 import json
+import subprocess
 import sys
 import tempfile
-from pathlib import Path
 from datetime import datetime
-import subprocess
+from pathlib import Path
 
 
-def run_benchmarks(size: str = 'medium', output: str = None, verbose: bool = True):
+def run_benchmarks(size: str = "medium", output: str = None, verbose: bool = True):
     """
     Run benchmark suite and collect results.
-    
+
     Parameters:
     -----------
     size : str
@@ -30,26 +30,29 @@ def run_benchmarks(size: str = 'medium', output: str = None, verbose: bool = Tru
     """
     # Ensure we're in the project root
     project_root = Path(__file__).parent.parent
-    
+
     # Create temporary file for JSON output
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
         tmp_json_path = tmp_file.name
-    
+
     try:
         # Run pytest-benchmark
         cmd = [
-            sys.executable, '-m', 'pytest',
-            'benchmarks/benchmark_suite.py',
-            '--benchmark-only',
-            '--benchmark-json', tmp_json_path,  # Output to temp file
-            '-v',
+            sys.executable,
+            "-m",
+            "pytest",
+            "benchmarks/benchmark_suite.py",
+            "--benchmark-only",
+            "--benchmark-json",
+            tmp_json_path,  # Output to temp file
+            "-v",
         ]
-        
+
         # Filter by size if needed (we can add markers later)
         if verbose:
             print(f"Running benchmarks (size: {size})...")
             print(f"Command: {' '.join(cmd)}\n")
-        
+
         try:
             result = subprocess.run(
                 cmd,
@@ -58,22 +61,22 @@ def run_benchmarks(size: str = 'medium', output: str = None, verbose: bool = Tru
                 text=True,
                 check=True,
             )
-            
+
             if verbose:
                 # Print stdout but filter out the JSON write message
-                stdout_lines = result.stdout.split('\n')
+                stdout_lines = result.stdout.split("\n")
                 for line in stdout_lines:
-                    if 'Wrote benchmark data' not in line and line.strip():
+                    if "Wrote benchmark data" not in line and line.strip():
                         print(line)
                 if result.stderr:
-                    stderr_lines = result.stderr.split('\n')
+                    stderr_lines = result.stderr.split("\n")
                     for line in stderr_lines:
-                        if line.strip() and 'Wrote benchmark data' not in line:
+                        if line.strip() and "Wrote benchmark data" not in line:
                             print("STDERR:", line, file=sys.stderr)
-            
+
             # Read JSON from temp file
             try:
-                with open(tmp_json_path, 'r') as f:
+                with open(tmp_json_path) as f:
                     benchmark_data = json.load(f)
             except (json.JSONDecodeError, FileNotFoundError) as e:
                 print(f"Warning: Could not read JSON output from {tmp_json_path}: {e}")
@@ -81,18 +84,18 @@ def run_benchmarks(size: str = 'medium', output: str = None, verbose: bool = Tru
                     print(f"STDOUT: {result.stdout}")
                     print(f"STDERR: {result.stderr}")
                 benchmark_data = None
-            
+
             if benchmark_data:
                 # Save results
                 if output:
                     output_path = Path(output)
                     output_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(output_path, 'w') as f:
+                    with open(output_path, "w") as f:
                         json.dump(benchmark_data, f, indent=2)
                     print(f"\nResults saved to: {output_path}")
-            
+
             return benchmark_data
-            
+
         except subprocess.CalledProcessError as e:
             print(f"Benchmark failed with return code {e.returncode}", file=sys.stderr)
             print(f"STDOUT: {e.stdout}", file=sys.stderr)
@@ -109,7 +112,7 @@ def run_benchmarks(size: str = 'medium', output: str = None, verbose: bool = Tru
 def generate_report(benchmark_data: dict, output_path: str = None):
     """
     Generate human-readable performance report from benchmark data.
-    
+
     Parameters:
     -----------
     benchmark_data : dict
@@ -117,62 +120,62 @@ def generate_report(benchmark_data: dict, output_path: str = None):
     output_path : str, optional
         Path to save report
     """
-    if not benchmark_data or 'benchmarks' not in benchmark_data:
+    if not benchmark_data or "benchmarks" not in benchmark_data:
         print("No benchmark data to report")
         return
-    
+
     report_lines = []
     report_lines.append("=" * 80)
     report_lines.append("PERFORMANCE BENCHMARK REPORT")
     report_lines.append("=" * 80)
     report_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     report_lines.append("")
-    
-    benchmarks = benchmark_data['benchmarks']
-    
+
+    benchmarks = benchmark_data["benchmarks"]
+
     # Group by test class
     by_class = {}
     for bench in benchmarks:
-        test_name = bench['name']
+        test_name = bench["name"]
         # Extract class name (format: TestClass::test_method)
-        if '::' in test_name:
-            class_name, method_name = test_name.split('::', 1)
+        if "::" in test_name:
+            class_name, method_name = test_name.split("::", 1)
         else:
-            class_name = 'Other'
+            class_name = "Other"
             method_name = test_name
-        
+
         if class_name not in by_class:
             by_class[class_name] = []
         by_class[class_name].append((method_name, bench))
-    
+
     # Report by class
     for class_name in sorted(by_class.keys()):
         report_lines.append("")
         report_lines.append("-" * 80)
         report_lines.append(f"{class_name}")
         report_lines.append("-" * 80)
-        
+
         for method_name, bench in sorted(by_class[class_name]):
-            mean_time = bench['stats']['mean']
-            std_time = bench['stats']['stddev']
-            min_time = bench['stats']['min']
-            max_time = bench['stats']['max']
-            rounds = bench['stats']['rounds']
-            
+            mean_time = bench["stats"]["mean"]
+            std_time = bench["stats"]["stddev"]
+            min_time = bench["stats"]["min"]
+            max_time = bench["stats"]["max"]
+            rounds = bench["stats"]["rounds"]
+
             report_lines.append(f"\n  {method_name}")
-            report_lines.append(f"    Mean:   {mean_time*1000:.4f} ms")
-            report_lines.append(f"    Std:    {std_time*1000:.4f} ms")
-            report_lines.append(f"    Min:    {min_time*1000:.4f} ms")
-            report_lines.append(f"    Max:    {max_time*1000:.4f} ms")
+            report_lines.append(f"    Mean:   {mean_time * 1000:.4f} ms")
+            report_lines.append(f"    Std:    {std_time * 1000:.4f} ms")
+            report_lines.append(f"    Min:    {min_time * 1000:.4f} ms")
+            report_lines.append(f"    Max:    {max_time * 1000:.4f} ms")
             report_lines.append(f"    Rounds: {rounds}")
-    
+
     report_lines.append("")
     report_lines.append("=" * 80)
-    
+
     report_text = "\n".join(report_lines)
-    
+
     if output_path:
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write(report_text)
         print(f"\nReport saved to: {output_path}")
     else:
@@ -180,48 +183,34 @@ def generate_report(benchmark_data: dict, output_path: str = None):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Run performance benchmarks and generate reports"
-    )
+    parser = argparse.ArgumentParser(description="Run performance benchmarks and generate reports")
     parser.add_argument(
-        '--size',
+        "--size",
         type=str,
-        choices=['small', 'medium', 'large'],
-        default='medium',
-        help='Workload size (default: medium)'
+        choices=["small", "medium", "large"],
+        default="medium",
+        help="Workload size (default: medium)",
     )
-    parser.add_argument(
-        '--output',
-        type=str,
-        help='Path to save JSON results'
-    )
-    parser.add_argument(
-        '--report',
-        type=str,
-        help='Path to save text report'
-    )
-    parser.add_argument(
-        '--quiet',
-        action='store_true',
-        help='Suppress benchmark output'
-    )
-    
+    parser.add_argument("--output", type=str, help="Path to save JSON results")
+    parser.add_argument("--report", type=str, help="Path to save text report")
+    parser.add_argument("--quiet", action="store_true", help="Suppress benchmark output")
+
     args = parser.parse_args()
-    
+
     # Default output paths
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if not args.output:
         args.output = f"benchmarks/results/benchmark_{args.size}_{timestamp}.json"
     if not args.report:
         args.report = f"benchmarks/results/report_{args.size}_{timestamp}.txt"
-    
+
     # Run benchmarks
     benchmark_data = run_benchmarks(
         size=args.size,
         output=args.output,
         verbose=not args.quiet,
     )
-    
+
     if benchmark_data:
         # Generate report
         generate_report(benchmark_data, output_path=args.report)
@@ -230,6 +219,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

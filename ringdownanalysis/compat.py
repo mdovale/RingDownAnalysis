@@ -2,13 +2,14 @@
 Compatibility layer for legacy function-based API.
 """
 
-import numpy as np
 from typing import Optional
 
-from .signal import RingDownSignal
-from .estimators import NLSFrequencyEstimator, DFTFrequencyEstimator
+import numpy as np
+
 from .crlb import CRLBCalculator
+from .estimators import DFTFrequencyEstimator, NLSFrequencyEstimator
 from .monte_carlo import MonteCarloAnalyzer
+from .signal import RingDownSignal
 
 
 # Utility functions
@@ -22,7 +23,7 @@ def crlb_var_f_ringdown_explicit(A0: float, sigma: float, fs: float, N: int, tau
     """
     Cramér-Rao lower bound for frequency estimation variance with ring-down,
     calculated from explicit Fisher information matrix.
-    
+
     This is a compatibility wrapper around CRLBCalculator.
     """
     return CRLBCalculator.variance(A0, sigma, fs, N, tau)
@@ -40,7 +41,7 @@ def generate_ringdown(
 ):
     """
     Generate a noisy ring-down signal (exponentially decaying sinusoid).
-    
+
     This is a compatibility wrapper around RingDownSignal.
     """
     signal = RingDownSignal(f0=f0, fs=fs, N=N, A0=A0, snr_db=snr_db, Q=Q)
@@ -49,10 +50,12 @@ def generate_ringdown(
 
 
 # Frequency estimation
-def estimate_freq_nls_ringdown(x: np.ndarray, fs: float, tau_known: Optional[float] = None) -> float:
+def estimate_freq_nls_ringdown(
+    x: np.ndarray, fs: float, tau_known: Optional[float] = None
+) -> float:
     """
     Estimate frequency using nonlinear least squares with ring-down model.
-    
+
     This is a compatibility wrapper around NLSFrequencyEstimator.
     """
     estimator = NLSFrequencyEstimator(tau_known=tau_known)
@@ -67,7 +70,7 @@ def estimate_freq_dft(
 ) -> float:
     """
     Estimate frequency using DFT peak fitting with Lorentzian function.
-    
+
     This is a compatibility wrapper around DFTFrequencyEstimator.
     """
     estimator = DFTFrequencyEstimator(
@@ -91,7 +94,7 @@ def estimate_freq_dft_optimized(
 ) -> float:
     """
     Optimized DFT-based frequency estimation with Lorentzian fitting for ring-down signals.
-    
+
     This is a compatibility wrapper around DFTFrequencyEstimator.
     """
     estimator = DFTFrequencyEstimator(
@@ -119,7 +122,7 @@ def monte_carlo_analysis(
 ):
     """
     Perform Monte Carlo analysis of frequency estimation methods for ring-down signals.
-    
+
     This is a compatibility wrapper around MonteCarloAnalyzer.
     """
     analyzer = MonteCarloAnalyzer()
@@ -135,4 +138,3 @@ def monte_carlo_analysis(
         n_workers=n_workers,
         timeout_per_trial=timeout_per_trial,
     )
-
