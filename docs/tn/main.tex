@@ -9,8 +9,8 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.3\baselineskip}
 
-\title{Frequency estimation of ring-down signals: nonlinear least squares and windowed discrete Fourier transform methods}
-\author{Miguel Dovale, mdovale@arizona.edu}
+\title{Frequency and Q-factor estimation of ring-down signals: nonlinear least squares and windowed discrete Fourier transform methods}
+\author{Miguel Dovale for the LASSO Team, mdovale@arizona.edu}
 \date{}
 
 \begin{document}
@@ -239,100 +239,87 @@ Since $Q = \omega \tau / 2$, we have $\omega^2 \tau^2 = 4Q^2$, so
 
 This is the asymptotic CRLB for $Q$.
 
-\subsubsection{Interpretation}
-
-- For \textbf{low-$Q$ systems} ($Q \ll 1$), $1 + 4Q^2 \approx 1$, and the bound is dominated by uncertainty in $\tau$:
-  $\sigma_Q^2 \propto \tau^2 / \Delta S_2$.
-  For $T \gg \tau$, $\Delta S_2 \approx \tau^3/(8T_s)$, so $\sigma_Q^2 \propto T_s / (\tau A_0^2)$.
-
-- For \textbf{high-$Q$ systems} ($Q \gg 1$), $1 + 4Q^2 \approx 4Q^2$, giving
-  \[
-  \sigma_Q^2 \gtrsim \frac{\sigma^2 \tau^2}{A_0^2 \Delta S_2} Q^2,
-  \quad\Rightarrow\quad
-  \frac{\sigma_Q}{Q} \gtrsim \frac{\sigma \tau}{A_0 \sqrt{\Delta S_2}}.
-  \]
-  Since $\Delta S_2 \sim \tau^3$, the relative error scales as
-  $\sigma_Q/Q \propto 1/\sqrt{\tau}$ for $T \gg \tau$ — i.e., improves as $\sqrt{Q}$.
-
-- In the \textbf{slow-decay limit} ($T \ll \tau$), $\Delta S_2 \approx NT^2/12$, and
-  \[
-  \frac{\sigma_Q^2}{Q^2} \gtrsim 
-  \frac{12}{\rho_0} \left( \frac{1}{N^3} + \frac{4\pi^2}{N} \right),
-  \]
-  where the first term is from frequency error and the second from decay-time error. For high $Q$, the $4\pi^2/N$ term dominates, indicating that estimating $Q$ is much harder than estimating $f$ alone.
-
-\subsection{Scaling relationships and design levers}
+\subsection{CRLB scaling laws}
 \label{sec:crlb-scaling}
 
-The CRLB in Eq.~\eqref{eq:crlb-ringdown} reveals fundamental scaling relationships that govern frequency estimation accuracy and identify key controllable parameters.
+The CRLB expressions in Eqs.~\eqref{eq:crlb-ringdown} and \eqref{eq:crlb-Q-final} exhibit distinct scaling behaviors in different regimes. The essential scaling relationships are summarized below.
 
-\subsubsection{Regime-dependent scalings}
+\subsubsection{Frequency estimation scaling}
 
-For the slow-decay regime ($T \ll \tau$), where the amplitude remains approximately constant, the CRLB scales as:
-\begin{equation}
-\sigma_f^2 \propto \frac{1}{\rho_0 T_s^2 N^3} = \frac{1}{\rho_0 T^3 f_s},
-\label{eq:scaling-slow-decay}
-\end{equation}
-where $\rho_0 = A_0^2/(2\sigma^2)$ is the initial SNR. This recovers the well-known $T^{-3}$ scaling for constant-amplitude sinusoids.
-
-For the rapid-decay regime ($T \gg \tau$), using the saturated sums from above, we find:
-\begin{equation}
-\sigma_f^2 \propto \frac{1}{\rho_0 \tau^3 f_s}.
-\label{eq:scaling-rapid-decay}
-\end{equation}
-In this regime, extending the observation time beyond $\tau$ provides diminishing returns, as later samples contribute negligible information due to exponentially reduced amplitude. The accuracy is fundamentally limited by $\tau$ and $\rho_0$.
-
-For the intermediate regime ($T \sim \tau$), the scaling interpolates between these limits, with effective observation time approximately $\min(T, \tau)$.
-
-\subsubsection{Controllable parameters}
-
-The key parameters that can be adjusted to improve frequency estimation accuracy are:
-
-\begin{enumerate}
-\item \textbf{Initial signal-to-noise ratio $\rho_0 = A_0^2/(2\sigma^2)$}: The CRLB scales inversely with $\rho_0$, so doubling the SNR improves frequency accuracy by a factor of $\sqrt{2}$. Increasing $A_0$ may be limited by system dynamics or saturation, while reducing $\sigma$ requires better instrumentation, shielding, or averaging.
-
-\item \textbf{Observation time $T = NT_s$}: For $T \ll \tau$, the standard deviation scales as $T^{-3/2}$, making observation time a powerful lever up to $T \sim \tau$. Beyond this point, further increases provide minimal benefit. The optimal observation time is typically $T \approx 2$--$3\tau$, capturing most signal energy while avoiding excessive late-time noise.
-
-\item \textbf{Quality factor $Q$ and decay time $\tau = Q/(\pi f_0)$}: Higher $Q$ (longer $\tau$) improves accuracy by extending the regime where $T \ll \tau$ applies and, in the rapid-decay regime, through the $\tau^{-3}$ scaling. However, $Q$ is typically constrained by the physical system.
-
-\item \textbf{Sampling rate $f_s = 1/T_s$}: For fixed $T$, increasing $f_s$ (and thus $N$) provides modest improvement through the $N^3$ scaling in the slow-decay regime. For fixed $N$, increasing $f_s$ reduces $T$ and degrades accuracy. The optimal strategy is to sample at a rate sufficient to avoid aliasing ($f_s > 2f_0$) and capture signal dynamics, then maximize $T$ within the constraint $T \lesssim 3\tau$.
-
-\item \textbf{Number of samples $N$}: For fixed sampling rate, $N$ determines $T = NT_s$. The scaling is effectively through $T$ rather than $N$ directly, as long as $N \gg f_s/f_0$ to have many cycles.
-\end{enumerate}
-
-\subsubsection{Trade-offs and practical considerations}
-
-The scaling relationships reveal several important trade-offs:
+For frequency estimation, the CRLB depends on the ratio $T/\tau$:
 
 \begin{itemize}
-\item \textbf{SNR vs.\ observation time}: For a fixed measurement budget, there is a trade-off between improving SNR and extending observation time. In the slow-decay regime, $T^{-3}$ scaling favors longer observation times, but SNR improvements may be more practical.
+\item \textbf{Slow-decay regime} ($T \ll \tau$): Using $S_0 \approx N$, $S_1 \approx NT/2$, $S_2 \approx NT^2/3$ in Eq.~\eqref{eq:crlb-ringdown},
+  \begin{equation}
+  \sigma_f^2 \ge \frac{12}{(2\pi)^2 \rho_0 T_s^2 N^3} = \frac{12}{(2\pi)^2 \rho_0 T^3 f_s},
+  \label{eq:scaling-slow-decay}
+  \end{equation}
+  where $\rho_0 = A_0^2/(2\sigma^2)$ is the initial SNR. This recovers the $T^{-3}$ scaling for constant-amplitude sinusoids.
 
-\item \textbf{Sampling rate vs.\ observation time}: For fixed data acquisition budget, increasing $f_s$ reduces $T$ for fixed $N$, which can degrade accuracy. The optimal choice balances frequency resolution with observation time requirements.
+\item \textbf{Rapid-decay regime} ($T \gg \tau$): Using the saturated sums $S_0 \approx \tau/(2T_s)$, $S_1 \approx \tau^2/(4T_s)$, $S_2 \approx \tau^3/(4T_s)$,
+  \begin{equation}
+  \sigma_f^2 \ge \frac{8T_s}{(2\pi)^2 \rho_0 \tau^3}.
+  \label{eq:scaling-rapid-decay}
+  \end{equation}
+  The bound becomes independent of $T$ and degrades as $\tau^{-3}$.
 
-\item \textbf{Decay time limitation}: The exponential decay fundamentally limits information content. Once $T \gtrsim 3\tau$, additional observation time provides minimal benefit. For high-$Q$ systems (long $\tau$), longer observation times are beneficial; for low-$Q$ systems, accuracy is quickly limited by the decay.
-
-\item \textbf{Systematic error floor}: As discussed in Sec.~\ref{sec:systematic-effects}, timebase scale errors $\epsilon$ introduce a systematic bias $\sim \epsilon f_0$ that cannot be reduced by longer averaging or higher SNR, setting a fundamental accuracy floor that must be addressed through timebase calibration.
+\item \textbf{SNR scaling}: In both regimes, $\sigma_f \propto 1/\sqrt{\rho_0}$, as shown in Fig.~\ref{fig:crlb-freq-snr}.
 \end{itemize}
 
-\subsubsection{Design guidelines}
+The transition between regimes is illustrated in Fig.~\ref{fig:crlb-freq-tau-ratio}.
 
-To achieve high accuracy frequency estimation in ring-down measurements:
+\subsubsection{Quality factor estimation scaling}
 
-\begin{enumerate}
-\item Maximize initial SNR $\rho_0$ through signal conditioning, low-noise amplification, and proper shielding.
+For $Q$ estimation, the CRLB in Eq.~\eqref{eq:crlb-Q-final} exhibits different behaviors:
 
-\item Choose observation time $T \approx 2$--$3\tau$ to capture most signal energy while avoiding excessive late-time noise. For $T \ll \tau$, extend $T$ to approach this range.
+\begin{itemize}
+\item \textbf{Low-$Q$ limit} ($Q \ll 1$): With $1 + 4Q^2 \approx 1$,
+  \begin{equation}
+  \sigma_Q^2 \ge \frac{\sigma^2 \tau^2}{4 A_0^2 \Delta S_2}.
+  \end{equation}
+  For $T \gg \tau$, using $\Delta S_2 \approx \tau^3/(8T_s)$,
+  \begin{equation}
+  \sigma_Q^2 \ge \frac{2T_s \sigma^2}{A_0^2 \tau}.
+  \end{equation}
 
-\item Use sampling rate $f_s$ sufficient to avoid aliasing ($f_s > 2f_0$) and capture signal dynamics, typically $f_s \gtrsim 10f_0$ for robust estimation. Then maximize $T$ within system constraints.
+\item \textbf{High-$Q$ limit} ($Q \gg 1$): With $1 + 4Q^2 \approx 4Q^2$,
+  \begin{equation}
+  \sigma_Q^2 \ge \frac{\sigma^2 \tau^2 Q^2}{A_0^2 \Delta S_2},
+  \quad\Rightarrow\quad
+  \frac{\sigma_Q}{Q} \ge \frac{\sigma \tau}{A_0 \sqrt{\Delta S_2}}.
+  \end{equation}
+  For $T \gg \tau$ (rapid-decay regime), using $\Delta S_2 \approx \tau^3/(8T_s)$, the relative error scales as $\sigma_Q/Q \propto 1/\sqrt{\tau} \propto 1/\sqrt{Q}$, as shown in Fig.~\ref{fig:crlb-q-vs-q}. However, for very large $Q$, the decay time $\tau = Q/(\pi f_0)$ becomes long compared to the observation time $T$, and the system transitions to the slow-decay regime ($T \ll \tau$). In this regime, using $\Delta S_2 \approx NT^2/12$ and $\tau = Q/(\pi f_0)$, the relative error degrades as $\sigma_Q/Q \propto Q/(\sqrt{N}T)$, worsening with increasing $Q$. This transition explains the precision degradation observed at very large $Q$ values in Fig.~\ref{fig:crlb-q-vs-q}, where the observation time becomes insufficient to capture the full decay.
+\end{itemize}
 
-\item Characterize or measure the quality factor $Q$ (and thus $\tau$) to understand the fundamental limits and optimize $T$ accordingly.
+The dependence on observation time $T/\tau$ is shown in Fig.~\ref{fig:crlb-q-tau-ratio}.
 
-\item Calibrate timebase errors $\epsilon$ to reduce systematic bias below the statistical uncertainty from the CRLB.
+\begin{figure}[htbp]
+\centering
+\includegraphics{crlb_freq_vs_tau_ratio.pdf}
+\caption{Frequency CRLB as a function of observation time ratio $T/\tau$. The transition from slow-decay ($T \ll \tau$) to rapid-decay ($T \gg \tau$) regimes is evident, with the approximated asymptotic limits shown as dashed lines. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $\rho_0 = \SI{60}{dB}$, $\tau = \SI{100}{s}$.}
+\label{fig:crlb-freq-tau-ratio}
+\end{figure}
 
-\item Use statistically efficient estimators (e.g., NLS with ring-down model) that approach the CRLB, rather than suboptimal methods that introduce additional inefficiency factors.
-\end{enumerate}
+\begin{figure}[htbp]
+\centering
+\includegraphics{crlb_freq_vs_snr.pdf}
+\caption{Frequency CRLB as a function of initial SNR $\rho_0$. The $1/\sqrt{\rho_0}$ scaling is shown as a dashed line. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^5$ samples, $\tau = \SI{100}{s}$.}
+\label{fig:crlb-freq-snr}
+\end{figure}
 
-The ultimate accuracy is determined by the interplay of these factors, with the CRLB providing the fundamental statistical limit that cannot be exceeded by any unbiased estimator.
+\begin{figure}[htbp]
+\centering
+\includegraphics{crlb_q_vs_q.pdf}
+\caption{Q-factor CRLB relative error $\sigma_Q/Q$ as a function of $Q$. The high-$Q$ scaling $\propto 1/\sqrt{Q}$ (valid for $T \gg \tau$, rapid-decay regime) is shown as a dashed line. At very large $Q$, precision degrades because $\tau = Q/(\pi f_0)$ becomes long compared to the observation time $T$, transitioning to the slow-decay regime ($T \ll \tau$) where the relative error scales as $\propto Q$ rather than $\propto 1/\sqrt{Q}$. This occurs when the observation window is insufficient to capture the full exponential decay. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^5$ samples, $\rho_0 = \SI{60}{dB}$.}
+\label{fig:crlb-q-vs-q}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics{crlb_q_vs_tau_ratio.pdf}
+\caption{Q-factor CRLB relative error $\sigma_Q/Q$ as a function of observation time ratio $T/\tau$. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $Q = 10^4$, $\rho_0 = \SI{60}{dB}$.}
+\label{fig:crlb-q-tau-ratio}
+\end{figure}
 
 \section{Nonlinear least squares (NLS)}
 
@@ -347,8 +334,6 @@ J = \sum_{n=0}^{N-1} \left[x_n - A_0 e^{-t_n/\tau}\cos(2\pi f t_n + \phi) - c\ri
 over parameters $(A_0,\phi,f,\tau,c)$ provides a maximum-likelihood estimator under Gaussian noise assumptions.
 
 When $\tau$ is known (e.g., from separate measurement of $Q$), the problem reduces to estimating $(A_0,\phi,f,c)$ with the exponential decay envelope fixed. The NLS estimator approaches the CRLB in Eq.~\eqref{eq:crlb-ringdown} for sufficiently long records and high SNR.
-
-When $\tau$ is unknown, it must be estimated jointly with the frequency. The Fisher information matrix shows coupling between $\tau$ and $A_0$, but the frequency estimate remains efficient if the decay is well-characterized.
 
 \section{Frequency-domain methods (DFT)}
 
@@ -367,13 +352,12 @@ For a ring-down signal, the exponential amplitude modulation broadens the spectr
 
 \subsection{Peak fitting with Lorentzian function}
 
-Since the Fourier transform of ring-down signals has a Lorentzian shape, fitting a Lorentzian function to the power spectrum is more appropriate than parabolic interpolation. A practical estimator:
+Since the Fourier transform of ring-down signals has a Lorentzian shape, fitting a Lorentzian function to the power spectrum is more appropriate than, e.g., a parabolic interpolation. A practical estimator:
 
 \begin{enumerate}
 \item Find the peak bin $k_{\max} = \arg\max_k |X[k]|^2$.
-\item Fit a Lorentzian function to the power spectrum $P[k] = |X[k]|^2$ around the peak using multiple bins (typically 5--7 bins).
+\item Fit a Lorentzian function to the power spectrum $P[k] = |X[k]|^2$ around the peak using multiple bins (e.g., 5--10 bins).
 \item Extract the center frequency $f_0$ from the fitted Lorentzian parameters.
-\item Output $\widehat{f} = f_0$.
 \end{enumerate}
 
 The Lorentzian function is parameterized as:
@@ -382,47 +366,25 @@ P(f) = \frac{A}{(f - f_0)^2 + (\gamma/2)^2} + P_{\text{offset}},
 \end{equation}
 where $A$ is the amplitude, $f_0$ is the center frequency, $\gamma$ is the full width at half maximum (FWHM), and $P_{\text{offset}}$ is a background offset. The fitting is performed using nonlinear least squares on the power spectrum values around the peak bin.
 
-This approach reduces bias compared to parabolic interpolation, which assumes a quadratic peak shape. The improvement is most significant for broad peaks (small $\tau$ or low $Q$), where the Lorentzian shape deviates substantially from quadratic.
-
-\subsection{Uncertainty scaling and efficiency}
+\subsection{NLS vs.\ DFT efficiency}
 \label{sec:dft-efficiency}
 
-The CRLB in Eq.~\eqref{eq:crlb-ringdown} applies to any unbiased frequency estimator, including DFT-based methods. However, DFT peak estimators are generally not statistically efficient and do not achieve this bound. The inefficiency arises from information loss from windowing, discrete frequency sampling, suboptimal use of data (using only magnitude-squared values for a few bins rather than all samples), and amplitude decay effects that broaden the spectral peak. Even with optimized windows like Kaiser ($\beta \approx 9$), the DFT remains a linear projection onto a fixed frequency grid rather than optimizing over continuous parameter space. The actual variance of DFT peak estimators typically exceeds the CRLB by a factor $\eta \geq 1$ that depends on window choice, fitting method, and the decay parameter $\tau$.
-
-For ring-down signals, using Lorentzian fitting instead of parabolic interpolation reduces bias and can improve efficiency, particularly for broad peaks (small $\tau$). However, $\eta$ is typically still larger than for constant-amplitude signals due to the broader spectral peak from amplitude decay. The improvement is most significant when the peak width is comparable to or larger than the frequency bin spacing.
-
-\section{Systematic effects}
-\label{sec:systematic-effects}
-
-\subsection{Timebase scale error}
-
-Timebase scale error affects ring-down measurements identically to constant-amplitude signals:
-\begin{equation}
-\widehat{f} \approx \frac{f_0}{1+\epsilon} \approx f_0(1-\epsilon),
-\end{equation}
-yielding a fractional frequency bias $y_{\text{bias}} \approx -\epsilon$.
-
-\subsection{Sampling jitter}
-
-Random timing jitter $\delta t_n$ with RMS $\sigma_t$ induces phase error
-\begin{equation}
-\delta\varphi_n \approx 2\pi f_0\,\delta t_n,\qquad \sigma_\varphi \approx 2\pi f_0\,\sigma_t,
-\end{equation}
-which broadens the spectral line. For ring-down signals, jitter effects are most significant during the early, high-SNR portion of the record.
-
-\subsection{Frequency drift}
-
-Frequency drift during ring-down is less common than in continuous measurements, but if present, it further complicates the estimation by introducing additional time dependence beyond the exponential amplitude decay.
+The CRLB in Eq.~\eqref{eq:crlb-ringdown} applies to any unbiased frequency estimator, including DFT-based methods. However, DFT peak estimators will typically not achieve this bound. The inefficiency arises due to a suboptimal use of the data, primarily due to:
+\begin{itemize}
+	\item windowing,
+	\item discarding the phase information.
+\end{itemize}
+Even with an optimized flat-top window, the DFT remains a linear projection onto a fixed frequency grid rather than optimizing over continuous parameter space.
 
 \section{Numerical analysis}
 
-We provide a Python analysis script (\texttt{examples/usage\_example.py}, function \texttt{example\_generate\_latex\_figures()}) that implements NLS and DFT methods for ring-down signals and performs Monte Carlo simulations. The script generates a time series sampled at $f_s = \SI{100}{Hz}$ with $N = 10^6$ samples (observation time $T = \SI{10000}{s}$) containing a ring-down signal at $f_0 = \SI{5}{Hz}$ with quality factor $Q$ and additive white Gaussian noise.
+We provide a Python script that implements NLS and DFT methods for ring-down signals and performs Monte Carlo simulations. The script generates a time series sampled at $f_s = \SI{100}{Hz}$ with $N = 10^6$ samples (observation time $T = \SI{10000}{s}$) containing a ring-down signal at $f_0 = \SI{5}{Hz}$ with quality factor $Q$ and additive white Gaussian noise.
 
 For each Monte Carlo trial, the script:
 \begin{enumerate}
 \item Generates an independent realization with random noise and initial phase $\phi_0 \sim \mathcal{U}(-\pi, \pi)$.
 \item Calculates the CRLB from the explicit Fisher information matrix derivation for both frequency and quality factor $Q$.
-\item Estimates frequency using nonlinear least squares (with ring-down model) and DFT peak fitting with Lorentzian function (Kaiser window with $\beta = 9$).
+\item Estimates frequency using nonlinear least squares and windowed DFT peak fitting with Lorentzian function.
 \item Estimates quality factor $Q$ using NLS (by estimating both frequency and decay time $\tau$, then computing $Q = \pi f \tau$).
 \item Computes error statistics: mean bias, standard deviation, and root-mean-square error for both frequency and $Q$ estimates.
 \end{enumerate}
@@ -431,39 +393,39 @@ The script produces figures comparing the performance of the estimation methods 
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{freq_estimation_ringdown_v6_individual.pdf}
+\includegraphics{freq_estimation_ringdown_v6_individual.pdf}
 \caption{Error distributions for NLS and DFT frequency estimation methods applied to ring-down signals. Each panel shows the histogram of frequency estimation errors from 100 Monte Carlo trials. The vertical dashed lines indicate the CRLB standard deviation calculated from the explicit Fisher information matrix. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples ($T = \SI{10000}{s}$), initial $\text{SNR} = \SI{60}{dB}$, quality factor $Q = 10^4$ (decay time $\tau = \SI{636.6}{s}$). The NLS method (top) achieves standard deviations close to the CRLB, while the DFT method with Lorentzian fitting (bottom) shows improved accuracy compared to parabolic interpolation due to better matching of the spectral peak shape.}
 \label{fig:individual-v6}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{freq_estimation_ringdown_v6_aggregate.pdf}
-\caption{Direct comparison of NLS and DFT estimation methods for ring-down signals. Left panel: Overlaid histograms showing the error distributions. Right panel: Box plots comparing the error distributions. The horizontal dashed lines indicate zero error and the CRLB. The NLS method's explicit ring-down model provides efficient estimation, while the DFT method with Lorentzian fitting reduces bias compared to parabolic interpolation by matching the true spectral shape of ring-down signals.}
+\includegraphics{freq_estimation_ringdown_v6_aggregate.pdf}
+\caption{Direct comparison of NLS and DFT estimation methods for ring-down signals. Left panel: Overlaid histograms showing the error distributions. Right panel: Box plots comparing the error distributions. The horizontal dashed lines indicate zero error and the CRLB. The NLS method's explicit ring-down model provides efficient estimation, while the DFT method yields higher uncertainty.}
 \label{fig:aggregate-v6}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{freq_estimation_ringdown_v6_performance.pdf}
+\includegraphics{freq_estimation_ringdown_v6_performance.pdf}
 \caption{Performance metrics comparison for ring-down signals. Left panel: Standard deviation of frequency estimation errors for each method, plotted on a logarithmic scale. The horizontal dashed line indicates the CRLB. Right panel: Statistical efficiency $\eta = \sigma_{\text{CRLB}}/\sigma_{\text{method}}$, where $\eta = 1$ corresponds to achieving the CRLB. The NLS method achieves efficiency near unity, demonstrating its statistical optimality for ring-down signals, while the DFT method with Lorentzian fitting achieves improved efficiency compared to parabolic interpolation due to reduced bias from better matching the spectral peak shape.}
 \label{fig:performance-v6}
 \end{figure}
 
 \subsection{Quality factor estimation}
 
-The quality factor $Q$ is estimated from the NLS method by jointly estimating frequency $f$ and decay time $\tau$, then computing $Q = \pi f \tau$. The CRLB for $Q$ estimation is calculated from the explicit Fisher information matrix derivation in Sec.~\ref{sec:crlb-scaling}, accounting for the covariance between frequency and decay time estimates.
+The quality factor $Q$ is estimated from the NLS method by jointly estimating frequency $f$ and decay time $\tau$, then computing $Q = \pi f \tau$. The CRLB for $Q$ estimation is calculated from the explicit Fisher information matrix derivation in Sec.~\ref{sec:crlb-scaling}, accounting for the covariance between frequency and decay time estimates (see Eq.~\eqref{eq:crlb-Q-final}).
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{q_estimation_ringdown_v6_individual.pdf}
+\includegraphics{q_estimation_ringdown_v6_individual.pdf}
 \caption{Error distribution for NLS quality factor ($Q$) estimation method applied to ring-down signals. The histogram shows the distribution of $Q$ estimation errors from 100 Monte Carlo trials. The vertical dashed lines indicate the CRLB standard deviation calculated from the explicit Fisher information matrix. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples ($T = \SI{10000}{s}$), initial $\text{SNR} = \SI{60}{dB}$, quality factor $Q = 10^4$ (decay time $\tau = \SI{636.6}{s}$). The NLS method achieves standard deviations close to the Q-CRLB, demonstrating efficient estimation of the quality factor.}
 \label{fig:q-individual-v6}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{q_estimation_ringdown_v6_performance.pdf}
+\includegraphics{q_estimation_ringdown_v6_performance.pdf}
 \caption{Performance metrics for quality factor ($Q$) estimation. Left panel: Standard deviation of $Q$ estimation errors for the NLS method, plotted on a logarithmic scale. The horizontal dashed line indicates the Q-CRLB. Right panel: Statistical efficiency $\eta = \sigma_{\text{CRLB}}/\sigma_{\text{method}}$, where $\eta = 1$ corresponds to achieving the CRLB. The NLS method achieves efficiency near unity for $Q$ estimation, demonstrating that the joint estimation of frequency and decay time provides statistically efficient quality factor estimates.}
 \label{fig:q-performance-v6}
 \end{figure}
