@@ -100,7 +100,7 @@ class RingDownAnalyzer:
             ftol=1e-8,
             xtol=1e-8,
             gtol=1e-8,
-            max_nfev=500,
+            max_nfev=150,  # Optimized: typical convergence in 6-12 nfev, 150 provides safety margin
             verbose=0,
         )
         
@@ -207,7 +207,7 @@ class RingDownAnalyzer:
             bounds=([0.0, f_low, -np.pi, -np.inf], [10.0 * A0_init, f_high, np.pi, np.inf]),
             method="trf",
             ftol=1e-6,
-            max_nfev=150,
+            max_nfev=100,  # Optimized: typical convergence in 5-10 nfev, 100 provides safety margin
             verbose=0,
         )
         

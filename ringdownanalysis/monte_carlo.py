@@ -96,7 +96,7 @@ class MonteCarloAnalyzer:
             DFT frequency estimator. If None, creates default.
         """
         self.nls_estimator = nls_estimator or NLSFrequencyEstimator(tau_known=None)
-        self.dft_estimator = dft_estimator or DFTFrequencyEstimator(window="kaiser")
+        self.dft_estimator = dft_estimator or DFTFrequencyEstimator(window="kaiser", use_zeropad=False)
         self.crlb_calc = CRLBCalculator()
     
     def run(

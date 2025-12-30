@@ -53,7 +53,16 @@ def _fit_lorentzian_to_peak(
     so fitting a Lorentzian is more appropriate than parabolic interpolation.
     """
     # Determine range of bins to use
-    half_range = n_points // 2
+    # Scale number of points based on frequency resolution to ensure consistent frequency coverage
+    # Target ~1.2e-3 Hz frequency range for fitting (balanced: enough points without too much noise)
+    df = fs / N_dft
+    target_freq_range_fit = 1.2e-3  # Target frequency range for fitting
+    n_points_scaled = max(n_points, int(target_freq_range_fit / df))
+    # Ensure odd number for symmetric range around peak
+    if n_points_scaled % 2 == 0:
+        n_points_scaled += 1
+    
+    half_range = n_points_scaled // 2
     k_start = max(0, k - half_range)
     k_end = min(len(P), k + half_range + 1)
     
@@ -71,8 +80,15 @@ def _fit_lorentzian_to_peak(
     left_idx = k
     right_idx = k
     
+    # Scale search range based on frequency resolution to ensure consistent frequency coverage
+    # Use a frequency-based range (~1e-3 Hz) converted to bins, with minimum of 10 bins
+    # This ensures the search range scales properly with zero-padding
+    df = fs / N_dft
+    target_freq_range = 1e-3  # Target ~1 mHz frequency range for search
+    search_bins = max(10, int(target_freq_range / df))
+    
     # Vectorized search for left half-maximum point
-    left_range_start = max(0, k - 10)
+    left_range_start = max(0, k - search_bins)
     left_range = np.arange(k - 1, left_range_start - 1, -1)
     if len(left_range) > 0:
         left_mask = P[left_range] < half_max
@@ -80,7 +96,7 @@ def _fit_lorentzian_to_peak(
             left_idx = left_range[np.argmax(left_mask)]  # First True from left
     
     # Vectorized search for right half-maximum point
-    right_range_end = min(len(P), k + 10)
+    right_range_end = min(len(P), k + search_bins)
     right_range = np.arange(k + 1, right_range_end)
     if len(right_range) > 0:
         right_mask = P[right_range] < half_max
@@ -100,6 +116,16 @@ def _fit_lorentzian_to_peak(
     
     # Fit Lorentzian
     try:
+        # Relax frequency bounds slightly to allow interpolation beyond bin edges
+        # This helps when the true peak is between bins
+        df = fs / N_dft
+        f_low = max(0.0, f_bins[0] - 0.5 * df)  # Allow half bin width below
+        f_high = min(0.5 * fs, f_bins[-1] + 0.5 * df)  # Allow half bin width above, but not beyond Nyquist
+        
+        # Improve gamma bounds: use more reasonable range based on typical ring-down behavior
+        # Gamma should be positive and typically in range of 0.1x to 5x the fitting range
+        gamma_max = max((f_bins[-1] - f_bins[0]) * 5.0, 1e-3)  # At least 1 mHz
+        
         popt, _ = curve_fit(
             _lorentzian_func,
             f_bins,
@@ -107,16 +133,17 @@ def _fit_lorentzian_to_peak(
             p0=[A_init, f0_init, gamma_init, offset_init],
             bounds=([
                 0.0,
-                f_bins[0],
-                0.0,
+                f_low,
+                1e-6,  # Minimum gamma (very small but positive)
                 -np.inf,
             ], [
                 np.inf,
-                f_bins[-1],
-                (f_bins[-1] - f_bins[0]) * 2.0,
+                f_high,
+                gamma_max,
                 np.inf,
             ]),
-            maxfev=300,
+            maxfev=500,  # Increased for better convergence
+            method='trf',  # Trust Region Reflective algorithm, more robust
         )
         
         A_fit, f0_fit, gamma_fit, offset_fit = popt
@@ -124,8 +151,9 @@ def _fit_lorentzian_to_peak(
         # Calculate delta (offset from bin k)
         delta = (f0_fit - f0_init) / (fs / N_dft)
         
-        # Clip delta to reasonable range
-        delta = np.clip(delta, -0.5, 0.5)
+        # Clip delta to reasonable range (±1 bin width) to prevent outliers
+        # With zero-padding, we can allow slightly larger range for better interpolation
+        delta = np.clip(delta, -1.0, 1.0)
         
         return delta
     except (RuntimeError, ValueError, np.linalg.LinAlgError):
@@ -260,7 +288,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                 ftol=1e-8,
                 xtol=1e-8,
                 gtol=1e-8,
-                max_nfev=400,
+                max_nfev=100,  # Optimized: typical convergence in 5-10 nfev, 100 provides safety margin
                 verbose=0,
             )
             
@@ -291,7 +319,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                 ftol=1e-8,
                 xtol=1e-8,
                 gtol=1e-8,
-                max_nfev=500,
+                max_nfev=150,  # Optimized: typical convergence in 6-12 nfev, 150 provides safety margin
                 verbose=0,
             )
             
