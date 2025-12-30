@@ -221,7 +221,7 @@ class MonteCarloAnalyzer:
         """
         self.nls_estimator = nls_estimator or NLSFrequencyEstimator(tau_known=None)
         self.dft_estimator = dft_estimator or DFTFrequencyEstimator(
-            window="kaiser", use_zeropad=False
+            window="rect", use_zeropad=False
         )
         self.crlb_calc = CRLBCalculator()
 
@@ -329,7 +329,7 @@ class MonteCarloAnalyzer:
         print(f"           Q={Q:.1e}, tau={tau:.2f} s, T/tau={T / tau:.2f}")
         print(f"CRLB std(f_hat) = {crlb_std:.6e} Hz (from explicit Fisher information)")
         print(f"CRLB std(Q_hat) = {crlb_std_q:.6e} (from explicit Fisher information)")
-        print("Using optimized DFT: Kaiser window (beta=9.0) + Lorentzian fitting\n")
+        print("Using optimized DFT: Rectangular window (no window) + Lorentzian fitting\n")
 
         # Prepare arguments for processing
         signal_params = {

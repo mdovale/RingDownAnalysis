@@ -61,7 +61,7 @@ nls_estimator = NLSFrequencyEstimator(tau_known=None)
 f_nls = nls_estimator.estimate(x, signal.fs)
 
 # Estimate frequency using DFT method
-dft_estimator = DFTFrequencyEstimator(window="kaiser", kaiser_beta=9.0)
+dft_estimator = DFTFrequencyEstimator(window="rect")
 f_dft = dft_estimator.estimate(x, signal.fs)
 
 print(f"True frequency: {signal.f0:.6f} Hz")
@@ -263,7 +263,7 @@ See `benchmarks/README.md` for detailed information on performance benchmarking 
 ## Key Results
 
 - **NLS Method**: Achieves statistical efficiency, approaching the CRLB for ring-down signals when using the explicit ring-down model
-- **DFT Method**: Provides computationally efficient estimation with Lorentzian peak fitting, but suffers from statistical inefficiency due to windowing and discrete frequency sampling
+- **DFT Method**: Provides computationally efficient estimation with Lorentzian peak fitting, but suffers from statistical inefficiency due to discrete frequency sampling
 - **Exponential Decay Impact**: The exponential amplitude decay reduces effective observation time and SNR, degrading estimation performance compared to constant-amplitude signals. The degradation depends on the ratio T/τ (observation time to decay time constant)
 - **Scaling Relationships**: For slow decay (T ≪ τ), accuracy scales as T⁻³/². For rapid decay (T ≫ τ), accuracy is limited by τ and scales as τ⁻³/²
 

@@ -47,10 +47,10 @@ class RingDownAnalyzer:
         nls_estimator : NLSFrequencyEstimator, optional
             NLS frequency estimator. If None, creates default (tau unknown).
         dft_estimator : DFTFrequencyEstimator, optional
-            DFT frequency estimator. If None, creates default (Kaiser window).
+            DFT frequency estimator. If None, creates default (rectangular window).
         """
         self.nls_estimator = nls_estimator or NLSFrequencyEstimator(tau_known=None)
-        self.dft_estimator = dft_estimator or DFTFrequencyEstimator(window="kaiser")
+        self.dft_estimator = dft_estimator or DFTFrequencyEstimator(window="rect")
         self.crlb_calc = CRLBCalculator()
 
     def estimate_tau(

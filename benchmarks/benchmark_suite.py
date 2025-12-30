@@ -164,7 +164,7 @@ class TestFrequencyEstimation:
     def test_dft_estimation_small(self, benchmark, small_signal):
         """Benchmark DFT estimation on small signal."""
         _, x, signal = small_signal
-        estimator = DFTFrequencyEstimator(window="kaiser")
+        estimator = DFTFrequencyEstimator(window="rect")
 
         def estimate():
             return estimator.estimate(x, signal.fs)
@@ -175,7 +175,7 @@ class TestFrequencyEstimation:
     def test_dft_estimation_medium(self, benchmark, medium_signal):
         """Benchmark DFT estimation on medium signal."""
         _, x, signal = medium_signal
-        estimator = DFTFrequencyEstimator(window="kaiser")
+        estimator = DFTFrequencyEstimator(window="rect")
 
         def estimate():
             return estimator.estimate(x, signal.fs)
@@ -186,7 +186,7 @@ class TestFrequencyEstimation:
     def test_dft_estimation_large(self, benchmark, large_signal):
         """Benchmark DFT estimation on large signal."""
         _, x, signal = large_signal
-        estimator = DFTFrequencyEstimator(window="kaiser")
+        estimator = DFTFrequencyEstimator(window="rect")
 
         def estimate():
             return estimator.estimate(x, signal.fs)

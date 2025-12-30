@@ -276,7 +276,7 @@ def profile_frequency_estimation(
             nls_est = NLSFrequencyEstimator(tau_known=None)
             f_nls = nls_est.estimate(x, signal.fs)
         if method in ("dft", "both"):
-            dft_est = DFTFrequencyEstimator(window="kaiser")
+            dft_est = DFTFrequencyEstimator(window="rect")
             f_dft = dft_est.estimate(x, signal.fs)
 
     profiler.profile(estimate)

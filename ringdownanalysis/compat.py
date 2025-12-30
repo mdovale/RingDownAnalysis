@@ -65,7 +65,7 @@ def estimate_freq_nls_ringdown(
 def estimate_freq_dft(
     x: np.ndarray,
     fs: float,
-    window: str = "kaiser",
+    window: str = "rect",
     kaiser_beta: float = 9.0,
 ) -> float:
     """
@@ -86,7 +86,7 @@ def estimate_freq_dft(
 def estimate_freq_dft_optimized(
     x: np.ndarray,
     fs: float,
-    window: str = "kaiser",
+    window: str = "rect",
     use_zeropad: bool = True,
     pad_factor: int = 4,
     lorentzian_points: int = 7,

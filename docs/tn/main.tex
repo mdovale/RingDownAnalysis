@@ -9,7 +9,7 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.3\baselineskip}
 
-\title{Frequency and Q-factor estimation of ring-down signals: nonlinear least squares and windowed discrete Fourier transform methods}
+\title{Frequency and Q-factor estimation of ring-down signals: nonlinear least squares and discrete Fourier transform methods}
 \author{Miguel Dovale for the LASSO Team, mdovale@arizona.edu}
 \date{}
 
@@ -17,7 +17,7 @@
 \maketitle
 
 \begin{abstract}
-We analyze the accuracy of estimating the frequency and quality factor $Q$ of a decaying sinusoid from finite, noisy samples. The signal arises from ring-down measurements of a harmonic oscillator, where the amplitude decays exponentially. Two complementary approaches are presented: nonlinear least squares (NLS) with explicit ring-down model, and frequency-domain methods (windowed DFT followed by peak location with Lorentzian fitting). We derive the Fisher information matrix explicitly for the ring-down case and compare estimator performance against the Cram\'er--Rao lower bound (CRLB). We provide a complete derivation of the CRLB for $Q$, showing that under the standard high-SNR, many-cycle approximation, frequency and decay time are asymptotically uncorrelated after marginalizing nuisance parameters.
+We analyze the accuracy of estimating the frequency and quality factor $Q$ of a decaying sinusoid from finite, noisy samples. The signal arises from ring-down measurements of a harmonic oscillator, where the amplitude decays exponentially. Two complementary approaches are presented: nonlinear least squares (NLS) with explicit ring-down model, and frequency-domain methods (DFT followed by peak location with Lorentzian fitting). We derive the Fisher information matrix explicitly for the ring-down case and compare estimator performance against the Cram\'er--Rao lower bound (CRLB). We provide a complete derivation of the CRLB for $Q$, showing that under the standard high-SNR, many-cycle approximation, frequency and decay time are asymptotically uncorrelated after marginalizing nuisance parameters.
 \end{abstract}
 
 \section{Problem formulation}
@@ -343,7 +343,7 @@ The windowed discrete Fourier transform is
 \begin{equation}
 X[k] = \sum_{n=0}^{N-1} w_n x_n\,e^{-i 2\pi kn/N},\qquad k=0,1,\dots,N-1,
 \end{equation}
-where $w_n$ is a window function. We use the Kaiser window with optimized parameters ($\beta \approx 9$) for high side-lobe suppression. The frequency grid spacing is
+where $w_n$ is a window function. We use a rectangular window (i.e., no window, $w_n = 1$) by default, which provides better results (lower uncertainty) for ring-down signals due to more efficient use of the data. The frequency grid spacing is
 \begin{equation}
 \Delta f = \frac{f_s}{N} = \frac{1}{T}.
 \end{equation}
@@ -369,12 +369,16 @@ where $A$ is the amplitude, $f_0$ is the center frequency, $\gamma$ is the full 
 \subsection{NLS vs.\ DFT efficiency}
 \label{sec:dft-efficiency}
 
-The CRLB in Eq.~\eqref{eq:crlb-ringdown} applies to any unbiased frequency estimator, including DFT-based methods. However, DFT peak estimators will typically not achieve this bound. The inefficiency arises due to a suboptimal use of the data, primarily due to:
-\begin{itemize}
-	\item windowing,
-	\item discarding the phase information.
-\end{itemize}
-Even with an optimized flat-top window, the DFT remains a linear projection onto a fixed frequency grid rather than optimizing over continuous parameter space.
+The CRLB in Eq.~\eqref{eq:crlb-ringdown} applies to any unbiased estimator, but DFT-based methods will generally not achieve it. The inefficiency arises from information loss:
+ 
+\begin{itemize} 
+\item {Windowing}: Applying a window function leads to information loss; this is why we use a rectangular window.
+\item {Phase discarding}: Using only the power spectrum discards half the information in the complex DFT coefficients. 
+\item {Discretization bias}: The DFT samples the spectrum at discrete frequencies; interpolation (even with Lorentzian fitting) cannot fully recover the continuous-parameter information. 
+%\item {Equal weighting}: The DFT treats all time samples equally, whereas optimal estimation can weight early (high-SNR) samples more heavily, a behavior NLS achieves automatically via its nonlinear cost function. 
+\end{itemize} 
+
+The above limitations ensure that DFT methods remain statistically suboptimal relative to NLS for ring-down signals.
 
 \section{Numerical analysis}
 
@@ -432,7 +436,7 @@ The quality factor $Q$ is estimated from the NLS method by jointly estimating fr
 
 \section{Comparison and conclusions}
 
-Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation, achieving the CRLB derived from the Fisher information matrix. The DFT peak fitting method with Lorentzian function and Kaiser window is computationally efficient and naturally handles multiple tones, but suffers from statistical inefficiency due to information loss from windowing and discrete frequency sampling.
+Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation, achieving the CRLB derived from the Fisher information matrix. The DFT peak fitting method with Lorentzian function and rectangular window (no window) is computationally efficient and naturally handles multiple tones, but suffers from statistical inefficiency due to information loss from discrete frequency sampling.
 
 For quality factor estimation, the NLS method achieves the Q-CRLB by jointly estimating frequency and decay time. The CRLB for $Q$ accounts for the covariance between frequency and decay time estimates, and under the high-SNR, many-cycle approximation, these parameters are asymptotically uncorrelated after marginalizing nuisance parameters. The NLS method's ability to estimate both parameters jointly enables efficient $Q$ estimation, as demonstrated by the near-unity statistical efficiency shown in Fig.~\ref{fig:q-performance-v6}.
 

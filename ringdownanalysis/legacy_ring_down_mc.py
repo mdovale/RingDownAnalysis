@@ -3,7 +3,7 @@ Frequency Estimation Analysis for Ring-Down Signals: NLS and Optimized DFT Metho
 
 This script performs Monte Carlo analysis comparing two frequency estimation methods for ring-down signals:
 1. Nonlinear least squares (NLS) with ring-down model
-2. Optimized DFT peak fitting (with Kaiser window, Lorentzian fitting for ring-down signals, and zero-padding)
+2. Optimized DFT peak fitting (with rectangular window, Lorentzian fitting for ring-down signals, and zero-padding)
 
 Results are compared against the Cramér-Rao lower bound (CRLB) calculated from the explicit
 Fisher information matrix for ring-down signals.
@@ -451,7 +451,7 @@ def estimate_freq_nls_ringdown(x: np.ndarray, fs: float, tau_known: float = None
 def estimate_freq_dft_optimized(
     x: np.ndarray,
     fs: float,
-    window: str = "kaiser",
+    window: str = "rect",
     use_zeropad: bool = True,
     pad_factor: int = 4,
     lorentzian_points: int = 7,
@@ -464,7 +464,7 @@ def estimate_freq_dft_optimized(
     a Lorentzian function is more appropriate than parabolic interpolation.
 
     Currently implemented:
-    - Kaiser window with optimized parameters for high side-lobe suppression (default)
+    - Rectangular window (no window) for efficient data use and lower data loss (default)
     - Zero-padding for finer frequency grid (when use_zeropad=True)
     - Lorentzian fitting for peak location (appropriate for ring-down signals)
 
@@ -475,7 +475,7 @@ def estimate_freq_dft_optimized(
     fs : float
         Sampling frequency (Hz)
     window : str
-        Window type: 'kaiser' (default), 'hann', 'rect', or 'blackman'
+        Window type: 'rect' (default), 'hann', 'kaiser', or 'blackman'
     use_zeropad : bool
         Use zero-padding for finer frequency grid (default: True)
     pad_factor : int
@@ -538,7 +538,7 @@ def estimate_freq_dft_optimized(
 
 # Backward compatibility: keep the old function name
 def estimate_freq_dft(
-    x: np.ndarray, fs: float, window: str = "kaiser", kaiser_beta: float = 9.0
+    x: np.ndarray, fs: float, window: str = "rect", kaiser_beta: float = 9.0
 ) -> float:
     """
     Estimate frequency using DFT peak fitting with Lorentzian function.
@@ -547,7 +547,7 @@ def estimate_freq_dft(
     Uses Lorentzian fitting for peak location, which is more appropriate for ring-down
     signals than parabolic interpolation since the Fourier transform has a Lorentzian shape.
     Zero-padding disabled (was found to be less optimal).
-    Default window is Kaiser with beta=9.0 for high side-lobe suppression.
+    Default window is rectangular (no window) for efficient data use and lower data loss.
 
     Parameters:
     -----------
@@ -556,7 +556,7 @@ def estimate_freq_dft(
     fs : float
         Sampling frequency (Hz)
     window : str
-        Window type: 'kaiser' (default), 'hann', 'rect', or 'blackman'
+        Window type: 'rect' (default), 'hann', 'kaiser', or 'blackman'
     kaiser_beta : float
         Kaiser window beta parameter (default: 9.0)
 
@@ -623,7 +623,7 @@ def _process_single_trial(args):
 
     try:
         # Use optimized DFT with Lorentzian fitting
-        f_hat_dft = estimate_freq_dft(x, fs, window="kaiser")
+        f_hat_dft = estimate_freq_dft(x, fs, window="rect")
         errors["dft"] = f_hat_dft - f0
         results["dft"] = True
     except Exception:
@@ -712,7 +712,7 @@ def monte_carlo_analysis(
     print(f"Parameters: f0={f0:.3f} Hz, fs={fs:.1f} Hz, N={N}, initial SNR={snr_db:.1f} dB")
     print(f"           Q={Q:.1e}, tau={tau:.2f} s, T/tau={T / tau:.2f}")
     print(f"CRLB std(f_hat) = {crlb_std:.6e} Hz (from explicit Fisher information)")
-    print("Using optimized DFT: Kaiser window (beta=9.0) + Lorentzian fitting\n")
+    print("Using optimized DFT: Rectangular window (no window) + Lorentzian fitting\n")
 
     # Prepare arguments for processing
     trial_args = [(i, f0, fs, N, A0, snr_db, Q, seed) for i in range(n_mc)]

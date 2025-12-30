@@ -209,7 +209,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
         errors_dft,
         bins=30,
         density=True,
-        color="blue",
+        color="tomato",
         alpha=0.6,
         label=f"DFT (std={results['stats']['dft']['std']:.2e})",
         edgecolor="black",

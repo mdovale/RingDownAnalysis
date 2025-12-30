@@ -393,7 +393,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
 
     def __init__(
         self,
-        window: str = "kaiser",
+        window: str = "rect",
         use_zeropad: bool = True,
         pad_factor: int = 4,
         lorentzian_points: int = 7,
@@ -405,7 +405,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         Parameters:
         -----------
         window : str
-            Window type: 'kaiser' (default), 'hann', 'rect', or 'blackman'
+            Window type: 'rect' (default), 'hann', 'kaiser', or 'blackman'
         use_zeropad : bool
             Use zero-padding for finer frequency grid (default: False)
         pad_factor : int

@@ -81,7 +81,7 @@ def example_frequency_estimation():
     f_nls = nls_estimator.estimate(x, signal.fs)
 
     # DFT estimator
-    dft_estimator = DFTFrequencyEstimator(window="kaiser", kaiser_beta=9.0)
+    dft_estimator = DFTFrequencyEstimator(window="rect")
     f_dft = dft_estimator.estimate(x, signal.fs)
 
     print(f"True frequency: {signal.f0:.6f} Hz")

@@ -49,7 +49,7 @@ def run_benchmark():
 
     # Initialize estimators
     nls_estimator = NLSFrequencyEstimator(tau_known=None)
-    dft_estimator = DFTFrequencyEstimator(window="kaiser", kaiser_beta=9.0)
+    dft_estimator = DFTFrequencyEstimator(window="rect")
 
     # Benchmark NLS method
     print("Benchmarking NLS method...")
