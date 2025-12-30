@@ -59,17 +59,32 @@ class RingDownDataLoader:
                 if RingDownDataLoader._is_data_line(line):
                     data_lines.append(line)
         
-        # Parse data
+        # Parse data using numpy for better performance
+        if not data_lines:
+            raise ValueError("No valid data lines found in CSV file")
+        
+        # Use numpy's genfromtxt-like approach but with manual parsing for better control
+        # Split all lines at once and convert to float array
         data_list = []
         for line in data_lines:
-            parts = [float(x.strip()) for x in line.split(',')]
-            data_list.append(parts)
+            parts = line.split(',')
+            # Only take first 4 columns (time and phase are in columns 1 and 4)
+            if len(parts) >= 4:
+                try:
+                    data_list.append([float(parts[0].strip()), float(parts[3].strip())])
+                except ValueError:
+                    continue  # Skip invalid lines
         
+        if not data_list:
+            raise ValueError("No valid numeric data found in CSV file")
+        
+        # Convert to numpy array in one step
         data_array = np.array(data_list)
         
         # Extract time (column 1, index 0) and phase (column 4, index 3)
+        # Since we only parsed columns 0 and 3, they're now at indices 0 and 1
         t_raw = data_array[:, 0]
-        data_raw = data_array[:, 3]  # Column 4 is index 3
+        data_raw = data_array[:, 1]
         
         # Time starts from 0
         t = t_raw - t_raw[0]

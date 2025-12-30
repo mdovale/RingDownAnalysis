@@ -141,8 +141,9 @@ class RingDownAnalyzer:
         data_cropped = data[crop_idx]
         
         # If cropped data is too short, return original
+        # Use views instead of copies when possible
         if len(t_crop) < min_samples:
-            return t.copy(), data.copy()
+            return t, data
         
         return t_crop, data_cropped
     

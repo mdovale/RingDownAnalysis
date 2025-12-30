@@ -225,12 +225,15 @@ class BatchRingDownAnalyzer:
         List[float]
             Q factor for each result
         """
-        q_factors = []
-        for r in self.results:
-            # Use NLS frequency estimate for Q calculation
-            q = np.pi * r['f_nls'] * r['tau_est']
+        # Vectorized Q factor calculation
+        f_nls_all = np.array([r['f_nls'] for r in self.results], dtype=float)
+        tau_est_all = np.array([r['tau_est'] for r in self.results], dtype=float)
+        q_factors = (np.pi * f_nls_all * tau_est_all).tolist()
+        
+        # Store Q factors in results
+        for r, q in zip(self.results, q_factors):
             r['Q'] = q
-            q_factors.append(q)
+        
         return q_factors
     
     def get_summary_table(self) -> Dict:
@@ -306,21 +309,15 @@ class BatchRingDownAnalyzer:
         
         n_realizations = len(self.results)
         
-        # Extract frequencies
-        f_nls_all = np.array([r['f_nls'] for r in self.results])
-        f_dft_all = np.array([r['f_dft'] for r in self.results])
+        # Extract frequencies - vectorized extraction
+        f_nls_all = np.array([r['f_nls'] for r in self.results], dtype=float)
+        f_dft_all = np.array([r['f_dft'] for r in self.results], dtype=float)
         
-        # Compute pairwise differences
-        nls_pairwise_diffs = []
-        dft_pairwise_diffs = []
-        
-        for i in range(n_realizations):
-            for j in range(i + 1, n_realizations):
-                nls_pairwise_diffs.append(abs(f_nls_all[i] - f_nls_all[j]))
-                dft_pairwise_diffs.append(abs(f_dft_all[i] - f_dft_all[j]))
-        
-        nls_pairwise_diffs = np.array(nls_pairwise_diffs)
-        dft_pairwise_diffs = np.array(dft_pairwise_diffs)
+        # Compute pairwise differences using vectorized operations
+        # Create upper triangular indices for pairwise comparisons
+        i_indices, j_indices = np.triu_indices(n_realizations, k=1)
+        nls_pairwise_diffs = np.abs(f_nls_all[i_indices] - f_nls_all[j_indices])
+        dft_pairwise_diffs = np.abs(f_dft_all[i_indices] - f_dft_all[j_indices])
         
         # Statistics for pairwise differences
         # Handle empty arrays to avoid RuntimeWarning
@@ -375,10 +372,8 @@ class BatchRingDownAnalyzer:
             'n_pairwise_comparisons': len(nls_pairwise_diffs),
             'nls_pairwise_diffs': nls_pairwise_diffs,
             'dft_pairwise_diffs': dft_pairwise_diffs,
-            'nls_pairwise_indices': [(i, j) for i in range(n_realizations) 
-                                     for j in range(i + 1, n_realizations)],
-            'dft_pairwise_indices': [(i, j) for i in range(n_realizations) 
-                                     for j in range(i + 1, n_realizations)],
+            'nls_pairwise_indices': list(zip(i_indices, j_indices)),
+            'dft_pairwise_indices': list(zip(i_indices, j_indices)),
             'nls_statistics': nls_stats,
             'dft_statistics': dft_stats,
             'nls_mean': nls_mean,
@@ -415,25 +410,35 @@ class BatchRingDownAnalyzer:
         if not self.results:
             return {}
         
-        diffs = [abs(r['f_nls'] - r['f_dft']) for r in self.results]
-        crlb_stds = [r['crlb_std_f'] for r in self.results]
+        # Vectorized extraction and computation
+        f_nls_all = np.array([r['f_nls'] for r in self.results], dtype=float)
+        f_dft_all = np.array([r['f_dft'] for r in self.results], dtype=float)
+        crlb_stds = np.array([r['crlb_std_f'] for r in self.results], dtype=float)
         
-        # Compute ratios (difference / CRLB)
-        ratios = []
-        for d, crlb in zip(diffs, crlb_stds):
-            if crlb > 0 and np.isfinite(crlb):
-                ratios.append(d / crlb)
-            else:
-                ratios.append(np.nan)
+        # Compute differences vectorized
+        diffs = np.abs(f_nls_all - f_dft_all)
         
-        ratios = np.array(ratios)
+        # Compute ratios (difference / CRLB) vectorized
+        # Use np.divide with where to handle division by zero and inf
+        ratios = np.divide(diffs, crlb_stds, 
+                          out=np.full_like(diffs, np.nan, dtype=float),
+                          where=(crlb_stds > 0) & np.isfinite(crlb_stds))
         valid_ratios = ratios[np.isfinite(ratios)]
         
-        crlb_stats = {
-            'mean': np.mean([c for c in crlb_stds if np.isfinite(c)]),
-            'min': np.min([c for c in crlb_stds if np.isfinite(c)]),
-            'max': np.max([c for c in crlb_stds if np.isfinite(c)]),
-        }
+        # Vectorized CRLB statistics
+        valid_crlb = crlb_stds[np.isfinite(crlb_stds)]
+        if len(valid_crlb) > 0:
+            crlb_stats = {
+                'mean': np.mean(valid_crlb),
+                'min': np.min(valid_crlb),
+                'max': np.max(valid_crlb),
+            }
+        else:
+            crlb_stats = {
+                'mean': np.nan,
+                'min': np.nan,
+                'max': np.nan,
+            }
         
         ratio_stats = {}
         if len(valid_ratios) > 0:
@@ -482,7 +487,7 @@ class BatchRingDownAnalyzer:
         if 'Q' not in self.results[0]:
             self.calculate_q_factors()
         
-        q_values = np.array([r['Q'] for r in self.results])
+        q_values = np.array([r['Q'] for r in self.results], dtype=float)
         
         return {
             'values': q_values,

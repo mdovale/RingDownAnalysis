@@ -66,18 +66,26 @@ def _fit_lorentzian_to_peak(
     P_max = P[k]
     f0_init = k * fs / N_dft
     
-    # Estimate gamma (FWHM) from half-maximum points
+    # Estimate gamma (FWHM) from half-maximum points using vectorized search
     half_max = P_max / 2.0
     left_idx = k
     right_idx = k
-    for i in range(k - 1, max(0, k - 10), -1):
-        if P[i] < half_max:
-            left_idx = i
-            break
-    for i in range(k + 1, min(len(P), k + 10)):
-        if P[i] < half_max:
-            right_idx = i
-            break
+    
+    # Vectorized search for left half-maximum point
+    left_range_start = max(0, k - 10)
+    left_range = np.arange(k - 1, left_range_start - 1, -1)
+    if len(left_range) > 0:
+        left_mask = P[left_range] < half_max
+        if np.any(left_mask):
+            left_idx = left_range[np.argmax(left_mask)]  # First True from left
+    
+    # Vectorized search for right half-maximum point
+    right_range_end = min(len(P), k + 10)
+    right_range = np.arange(k + 1, right_range_end)
+    if len(right_range) > 0:
+        right_mask = P[right_range] < half_max
+        if np.any(right_mask):
+            right_idx = right_range[np.argmax(right_mask)]  # First True from left
     
     if right_idx > left_idx:
         gamma_init = (right_idx - left_idx) * fs / N_dft
@@ -131,9 +139,8 @@ def _estimate_initial_parameters_from_dft(x: np.ndarray, fs: float) -> tuple:
     mag2 = np.abs(X) ** 2
     
     # Skip DC component (k=0) when finding peak
-    mag2_no_dc = mag2.copy()
-    mag2_no_dc[0] = 0.0
-    k = int(np.argmax(mag2_no_dc))
+    # Use view instead of copy to avoid memory allocation
+    k = int(np.argmax(mag2[1:]) + 1)  # Skip first element, add 1 to index
     
     # Use Lorentzian fitting for initial guess if possible
     if k > 0 and k < len(mag2) - 1:
@@ -161,13 +168,22 @@ def _estimate_initial_tau_from_envelope(x: np.ndarray, t: np.ndarray) -> float:
     window_size = min(1000, N // 10)
     n_windows = N // window_size
     
-    rms_values = []
-    for i in range(n_windows):
-        start = i * window_size
-        end = start + window_size
-        rms_values.append(np.std(x[start:end]))
+    if n_windows == 0:
+        return t[-1] / 2.0
     
-    rms_values = np.array(rms_values)
+    # Vectorized RMS calculation using reshape and std along axis
+    # Pad or truncate to make evenly divisible
+    x_padded = x[:n_windows * window_size]
+    if len(x_padded) > 0:
+        # Reshape to (n_windows, window_size) and compute std along axis=1
+        x_reshaped = x_padded.reshape(n_windows, window_size)
+        rms_values = np.std(x_reshaped, axis=1)
+    else:
+        # Fallback for very short signals
+        rms_values = np.array([np.std(x)])
+        n_windows = 1
+        window_size = N
+    
     rms_peak = np.max(rms_values)
     decay_idx = np.where(rms_values < rms_peak * np.exp(-1))[0]
     
@@ -294,7 +310,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
     def __init__(
         self,
         window: str = "kaiser",
-        use_zeropad: bool = False,
+        use_zeropad: bool = True,
         pad_factor: int = 4,
         lorentzian_points: int = 7,
         kaiser_beta: float = 9.0,
@@ -370,9 +386,8 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         P = np.abs(X) ** 2
         
         # Find peak bin (skip DC component k=0)
-        P_no_dc = P.copy()
-        P_no_dc[0] = 0.0
-        k = int(np.argmax(P_no_dc))
+        # Use view instead of copy to avoid memory allocation
+        k = int(np.argmax(P[1:]) + 1)  # Skip first element, add 1 to index
         
         # Guard against edges
         if k <= 0 or k >= len(P) - 1:
