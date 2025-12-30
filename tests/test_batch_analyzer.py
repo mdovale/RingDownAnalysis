@@ -180,11 +180,6 @@ class TestBatchRingDownAnalyzer:
     
     def test_consistency_analysis_single(self):
         """Test consistency analysis with single result."""
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'A,C,E','location':'test_batch_analyzer.py:181','message':'test_consistency_analysis_single entry','data':{'test_name':'test_consistency_analysis_single'},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
         batch_analyzer = BatchRingDownAnalyzer()
         
         batch_analyzer.results = [
@@ -192,12 +187,6 @@ class TestBatchRingDownAnalyzer:
         ]
         
         consistency = batch_analyzer.consistency_analysis()
-        
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'A,C,E','location':'test_batch_analyzer.py:193','message':'After consistency_analysis call','data':{'n_realizations':consistency.get('n_realizations'),'n_pairwise_comparisons':consistency.get('n_pairwise_comparisons'),'nls_pairwise_diffs_len':len(consistency.get('nls_pairwise_diffs',[]))},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
         
         assert consistency['n_realizations'] == 1
         assert consistency['n_pairwise_comparisons'] == 0
@@ -312,11 +301,6 @@ class TestBatchRingDownAnalyzer:
     
     def test_consistency_analysis_statistics(self):
         """Test that consistency analysis computes correct statistics."""
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'initial','hypothesisId':'B,D','location':'test_batch_analyzer.py:302','message':'test_consistency_analysis_statistics entry','data':{'test_name':'test_consistency_analysis_statistics'},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
         batch_analyzer = BatchRingDownAnalyzer()
         
         # Create results with known frequencies
@@ -329,52 +313,13 @@ class TestBatchRingDownAnalyzer:
         consistency = batch_analyzer.consistency_analysis()
         
         # Check pairwise differences
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'B,D','location':'test_batch_analyzer.py:331','message':'Before pairwise diff assertions','data':{'consistency_keys':list(consistency.keys()),'has_nls_pairwise_diffs':'nls_pairwise_diffs' in consistency},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
         nls_diffs = consistency['nls_pairwise_diffs']
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'B,D','location':'test_batch_analyzer.py:333','message':'About to check pairwise diff length','data':{'nls_diffs_len':len(nls_diffs),'expected_len':3},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
         assert len(nls_diffs) == 3  # 3 choose 2 = 3
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'B,D','location':'test_batch_analyzer.py:334','message':'About to check pairwise diff values','data':{'nls_diffs':nls_diffs.tolist() if hasattr(nls_diffs,'tolist') else list(nls_diffs),'nls_diffs_0':float(nls_diffs[0]) if len(nls_diffs)>0 else None},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
         assert 0.1 in nls_diffs or abs(0.1 - nls_diffs[0]) < 1e-10
         assert 0.2 in nls_diffs or abs(0.2 - nls_diffs[1]) < 1e-10
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'B,D','location':'test_batch_analyzer.py:350','message':'Pairwise diff assertions PASSED','data':{'assertions_passed':True},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
         
         # Check statistics
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            is_close_result = np.isclose(consistency['nls_mean'], 5.1)
-            # Convert numpy bool to Python bool for JSON serialization
-            is_close_python_bool = bool(is_close_result.item() if hasattr(is_close_result, 'item') else is_close_result)
-            are_equal_result = consistency['nls_mean'] == 5.1
-            are_equal_python_bool = bool(are_equal_result.item() if hasattr(are_equal_result, 'item') else are_equal_result)
-            f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'B,D','location':'test_batch_analyzer.py:343','message':'Before assertion on nls_mean','data':{'nls_mean':float(consistency['nls_mean']),'nls_mean_repr':repr(consistency['nls_mean']),'expected':5.1,'expected_repr':repr(5.1),'are_equal':are_equal_python_bool,'diff':float(abs(consistency['nls_mean']-5.1)),'is_close':is_close_python_bool},'timestamp':int(time.time()*1000)})+'\n')
-        # #endregion
-        # #region agent log
-        with open('/Users/mdovale/Work-local/RingDownAnalysis/.cursor/debug.log', 'a') as f:
-            import json, time
-            try:
-                assert np.isclose(consistency['nls_mean'], 5.1)
-                f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'B,D','location':'test_batch_analyzer.py:343','message':'nls_mean assertion PASSED','data':{'assertion_passed':True},'timestamp':int(time.time()*1000)})+'\n')
-            except AssertionError as e:
-                f.write(json.dumps({'sessionId':'debug-session','runId':'post-fix','hypothesisId':'B,D','location':'test_batch_analyzer.py:343','message':'nls_mean assertion FAILED','data':{'assertion_passed':False,'error':str(e)},'timestamp':int(time.time()*1000)})+'\n')
-                raise
-        # #endregion
+        assert np.isclose(consistency['nls_mean'], 5.1)
         assert abs(consistency['nls_std_across_realizations'] - np.std([5.0, 5.1, 5.2])) < 1e-10
     
     def test_crlb_comparison_ratios(self):
