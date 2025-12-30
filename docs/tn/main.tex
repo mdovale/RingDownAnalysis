@@ -6,18 +6,18 @@
 \usepackage{hyperref}
 \usepackage{graphicx}
 
-\setlength{\parindent}{5pt}
+\setlength{\parindent}{0pt}
 \setlength{\parskip}{0.3\baselineskip}
 
-\title{Frequency Estimation of Ring-Down Signals: Nonlinear Least Squares and DFT Methods}
-\author{}
+\title{Frequency estimation of ring-down signals: nonlinear least squares and windowed discrete Fourier transform methods}
+\author{Miguel Dovale, mdovale@arizona.edu}
 \date{}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-We analyze the accuracy of estimating the frequency of a decaying sinusoid from finite, noisy samples. The signal arises from ring-down measurements of a harmonic oscillator with quality factor $Q$, where the amplitude decays exponentially. Two complementary approaches are presented: nonlinear least squares (NLS) with explicit ring-down model, and frequency-domain methods (DFT peak location with Lorentzian fitting using Kaiser window). We derive the Fisher information matrix explicitly for the ring-down case and compare estimator performance against the Cramér-Rao lower bound.
+We analyze the accuracy of estimating the frequency and quality factor $Q$ of a decaying sinusoid from finite, noisy samples. The signal arises from ring-down measurements of a harmonic oscillator, where the amplitude decays exponentially. Two complementary approaches are presented: nonlinear least squares (NLS) with explicit ring-down model, and frequency-domain methods (windowed DFT followed by peak location with Lorentzian fitting). We derive the Fisher information matrix explicitly for the ring-down case and compare estimator performance against the Cram\'er--Rao lower bound (CRLB). We provide a complete derivation of the CRLB for $Q$, showing that under the standard high-SNR, many-cycle approximation, frequency and decay time are asymptotically uncorrelated after marginalizing nuisance parameters.
 \end{abstract}
 
 \section{Problem formulation}
@@ -32,27 +32,23 @@ where $f_0$ is the unknown resonance frequency, $A_0$ is the initial amplitude, 
 \end{equation}
 The sampling times are
 \begin{equation}
-t_n = (1+\epsilon)nT_s + \delta t_n,
+t_n = nT_s,
 \end{equation}
-where $T_s$ is the nominal sampling period, $\epsilon$ is a fractional timebase scale error, and $\delta t_n$ is random timing jitter. The total observation time is $T = NT_s$.
+where $T_s$ is the nominal sampling period and $T = NT_s$ is the total observation time.
 
 For white Gaussian noise $w_n \sim \mathcal{N}(0,\sigma^2)$, the instantaneous signal-to-noise ratio decreases exponentially:
 \begin{equation}
 \rho(t) = \frac{[A_0 e^{-t/\tau}]^2/2}{\sigma^2} = \rho_0 e^{-2t/\tau},
 \end{equation}
-where $\rho_0 = A_0^2/(2\sigma^2)$ is the initial SNR. The effective SNR over the observation window is reduced, and the later samples contribute less information due to their lower amplitude and SNR.
+where $\rho_0 = A_0^2/(2\sigma^2)$ is the initial SNR. Later samples contribute less information due to lower amplitude and SNR.
 
 \section{Fisher information and Cram\'er--Rao lower bound}
 
 \subsection{Explicit Fisher information matrix}
 
-For the ring-down model $x_n = A_0 e^{-t_n/\tau}\cos(\omega t_n + \phi) + w_n$ with $\omega = 2\pi f$ and $t_n = nT_s$, we consider the parameter vector $\theta = [A_0, \phi, \omega, \tau]^T$ under i.i.d.\ Gaussian noise $w_n \sim \mathcal{N}(0,\sigma^2)$.
+For the ring-down model with $\omega = 2\pi f$ and $t_n = nT_s$, the parameter vector is $\theta = [A_0, \phi, \omega, \tau]^T$, and $w_n \sim \mathcal{N}(0,\sigma^2)$.
 
-The mean function is
-\begin{equation}
-\mu_n(\theta) = A_0 e^{-t_n/\tau}\cos(\omega t_n + \phi).
-\end{equation}
-The Fisher information matrix elements are
+The mean function is $\mu_n(\theta) = A_0 e^{-t_n/\tau}\cos(\omega t_n + \phi)$. The Fisher information matrix elements are
 \begin{equation}
 \mathcal{I}_{ij} = \frac{1}{\sigma^2}\sum_{n=0}^{N-1}
 \frac{\partial \mu_n}{\partial \theta_i}\frac{\partial \mu_n}{\partial \theta_j}.
@@ -66,14 +62,7 @@ The partial derivatives are:
 \frac{\partial \mu_n}{\partial \tau} &= A_0 \frac{t_n}{\tau^2} e^{-t_n/\tau}\cos(\omega t_n + \phi).
 \end{align}
 
-For long records spanning many cycles, the trigonometric terms average out. Specifically, for $N \gg 1$ and many cycles ($\omega T \gg 2\pi$), we have:
-\begin{align}
-&\sum_n \cos^2(\omega t_n + \phi) \approx \sum_n \sin^2(\omega t_n + \phi) \approx \frac{N}{2},\\
-&\sum_n \cos(\omega t_n + \phi)\sin(\omega t_n + \phi) \approx 0,\\
-&\sum_n t_n \cos(\omega t_n + \phi)\sin(\omega t_n + \phi) \approx 0.
-\end{align}
-
-The Fisher information matrix becomes approximately:
+For long records ($N \gg 1$, $\omega T \gg 2\pi$), trigonometric cross-terms average to zero, and squared terms average to $1/2$. The Fisher information matrix becomes approximately:
 \begin{equation}
 \mathcal{I} \approx \frac{1}{\sigma^2}
 \begin{bmatrix}
@@ -85,127 +74,197 @@ The Fisher information matrix becomes approximately:
 \label{eq:fisher-matrix}
 \end{equation}
 
-For uniformly spaced samples $t_n = nT_s$ and $T = NT_s$, the sums can be approximated. For $T \ll \tau$ (slow decay), the exponential factors are approximately unity, and we recover the constant-amplitude case. For general $T/\tau$, we have:
+Define the weighted sums (with $t_n = nT_s$):
 \begin{align}
-S_0 &\equiv \sum_{n=0}^{N-1} e^{-2nT_s/\tau} \approx \frac{1 - e^{-2T/\tau}}{1 - e^{-2T_s/\tau}} \approx \frac{\tau}{2T_s}\left(1 - e^{-2T/\tau}\right),\\
-S_1 &\equiv \sum_{n=0}^{N-1} nT_s e^{-2nT_s/\tau} \approx \frac{T_s e^{-2T_s/\tau}}{(1 - e^{-2T_s/\tau})^2}\left[1 - (N+1)e^{-2T/\tau} + Ne^{-2(N+1)T_s/\tau}\right],\\
-S_2 &\equiv \sum_{n=0}^{N-1} (nT_s)^2 e^{-2nT_s/\tau} \approx \frac{T_s^2 e^{-2T_s/\tau}(1 + e^{-2T_s/\tau})}{(1 - e^{-2T_s/\tau})^3}\left[1 - (N+1)^2 e^{-2T/\tau} + \cdots\right].
+S_0 &= \sum_{n=0}^{N-1} e^{-2nT_s/\tau}, &
+S_1 &= \sum_{n=0}^{N-1} nT_s e^{-2nT_s/\tau}, &
+S_2 &= \sum_{n=0}^{N-1} (nT_s)^2 e^{-2nT_s/\tau}.
 \end{align}
 
-For $T \gg \tau$, these sums saturate: $S_0 \approx \tau/(2T_s)$, $S_1 \approx \tau^2/(4T_s)$, $S_2 \approx \tau^3/(4T_s)$.
+For $T \gg \tau$, the sums saturate:
+\begin{align}
+S_0 &\approx \frac{\tau}{2T_s}, &
+S_1 &\approx \frac{\tau^2}{4T_s}, &
+S_2 &\approx \frac{\tau^3}{4T_s}.
+\end{align}
 
 \subsection{Cram\'er--Rao lower bound for frequency}
 
-To find the CRLB for frequency $\omega$ (or $f = \omega/(2\pi)$), we need the Schur complement of $\mathcal{I}$ with respect to the frequency parameter, accounting for the nuisance parameters $(A_0, \phi, \tau)$.
-
-The effective Fisher information for $\omega$ is:
+After marginalizing $A_0$ and $\phi$, the effective Fisher information for frequency is:
 \begin{equation}
-\mathcal{I}_{\text{eff}}(\omega) = \mathcal{I}_{\omega\omega} - \mathcal{I}_{\omega\phi}^2/\mathcal{I}_{\phi\phi} - \text{(terms from } A_0 \text{ and } \tau\text{)}.
+\mathcal{I}_{\text{eff}}(\omega) = \frac{A_0^2}{\sigma^2}
+\left(
+S_2 - \frac{S_1^2}{S_0}
+\right).
 \end{equation}
 
-For the case where $\tau$ is known (or estimated separately with high precision), the matrix reduces to $3 \times 3$ for $(A_0, \phi, \omega)$, and:
-\begin{equation}
-\mathcal{I}_{\text{eff}}(\omega) \approx \frac{A_0^2}{\sigma^2}\left(S_2 - \frac{S_1^2}{S_0}\right),
-\end{equation}
-where $S_0$, $S_1$, $S_2$ are the weighted sums defined above.
-
-The CRLB for frequency is:
+Thus the CRLB for cyclic frequency $f = \omega/(2\pi)$ is:
 \begin{equation}
 \boxed{
-\sigma_f^2 \gtrsim \frac{1}{(2\pi)^2} \frac{\sigma^2}{A_0^2\left(S_2 - S_1^2/S_0\right)}.
+\sigma_f^2 \ge \frac{1}{(2\pi)^2} \frac{\sigma^2}{A_0^2\left(S_2 - S_1^2/S_0\right)}.
 \label{eq:crlb-ringdown}
 }
 \end{equation}
 
-For $T \ll \tau$ (slow decay), $S_0 \approx N$, $S_1 \approx NT_s(N-1)/2$, $S_2 \approx N T_s^2 (N^2-1)/12$, we obtain the CRLB for $f$ in the constant-amplitude sinusoid case:
-\begin{equation}
-\sigma_f^2 \gtrsim \frac{12}{(2\pi)^2\rho_0\,T_s^2\,N^3}.
-\end{equation}
+For $T \ll \tau$: $S_0 \approx N$, $S_1 \approx NT/2$, $S_2 \approx NT^2/3$, yielding
+$\sigma_f^2 \ge 12/[ (2\pi)^2 \rho_0 T_s^2 N^3 ]$, the known result for a constant-amplitude sinusoid.
 
-For $T \gg \tau$ (rapid decay), the effective observation time is limited by $\tau$, and the bound degrades approximately as $(\tau/T)^3$ compared to the constant-amplitude case.
+For $T \gg \tau$: $S_2 - S_1^2/S_0 = \frac{\tau^3}{4T_s} - \frac{\tau^4/(16T_s^2)}{\tau/(2T_s)} = \frac{\tau^3}{8T_s}$, so
+\begin{equation}
+\sigma_f^2 \ge \frac{8T_s}{(2\pi)^2} \frac{\sigma^2}{A_0^2 \tau^3}.
+\end{equation}
+The bound degrades as $\tau^{-3}$, reflecting that only $\sim \tau$ of observation time is effective.
 
 \subsection{Cram\'er--Rao lower bound for quality factor}
 
-The quality factor $Q$ is related to the resonance frequency $f_0$ and decay time constant $\tau$ by
-\begin{equation}
-Q = \pi f_0 \tau = \frac{\omega \tau}{2}.
-\label{eq:Q-definition}
-\end{equation}
-To derive the CRLB for $Q$, we need to account for the uncertainty in both $f_0$ (or $\omega$) and $\tau$, as well as their correlation.
+The quality factor is $Q = \pi f \tau = \frac{\omega \tau}{2}$. Since $Q$ is a function of two parameters, its CRLB depends on the covariance of $(\omega, \tau)$ estimates.
 
-For the full parameter vector $\theta = [A_0, \phi, \omega, \tau]^T$, the Fisher information matrix $\mathcal{I}$ is given in Eq.~\eqref{eq:fisher-matrix}. The CRLB for the vector $[\omega, \tau]^T$ is obtained from the $2 \times 2$ submatrix of $\mathcal{I}^{-1}$ corresponding to these parameters. Using the Schur complement method to account for the nuisance parameters $(A_0, \phi)$, the covariance matrix for $(\omega, \tau)$ is:
-\begin{equation}
-\text{Cov}(\omega, \tau) \succeq \begin{bmatrix}
-\mathcal{I}_{\omega\omega} & \mathcal{I}_{\omega\tau}\\
-\mathcal{I}_{\tau\omega} & \mathcal{I}_{\tau\tau}
-\end{bmatrix}^{-1},
-\end{equation}
-where the inequality indicates that the covariance matrix minus the inverse Fisher information matrix is positive semidefinite.
+\subsubsection{Effective Fisher information for $(\omega, \tau)$}
 
-From the Fisher information matrix structure in Eq.~\eqref{eq:fisher-matrix}, we note that $\mathcal{I}_{\omega\tau} = 0$ (the frequency and decay time parameters are uncorrelated in the Fisher information matrix when the trigonometric terms average out). However, they become correlated through the nuisance parameters $(A_0, \phi)$. The effective Fisher information matrix for $(\omega, \tau)$ after accounting for nuisance parameters is:
-\begin{equation}
-\mathcal{I}_{\text{eff}}(\omega, \tau) = \begin{bmatrix}
-\mathcal{I}_{\text{eff}}(\omega) & \mathcal{I}_{\omega\tau,\text{eff}}\\
-\mathcal{I}_{\tau\omega,\text{eff}} & \mathcal{I}_{\text{eff}}(\tau)
+To obtain the CRLB for $Q$, we must compute the effective $2\times2$ Fisher matrix for $(\omega, \tau)$ after marginalizing the nuisance parameters $(A_0, \phi)$. Partition the full $4\times4$ FIM as
+\[
+\mathcal{I} = 
+\begin{bmatrix}
+\mathcal{I}_{AA} & \mathbf{0}^T & \mathcal{I}_{A\omega} & \mathcal{I}_{A\tau} \\
+\mathbf{0} & \mathcal{I}_{\phi\phi} & \mathcal{I}_{\phi\omega} & \mathbf{0}^T \\
+\mathcal{I}_{\omega A} & \mathcal{I}_{\omega\phi} & \mathcal{I}_{\omega\omega} & \mathbf{0} \\
+\mathcal{I}_{\tau A} & \mathbf{0} & \mathbf{0} & \mathcal{I}_{\tau\tau}
 \end{bmatrix},
-\end{equation}
-where $\mathcal{I}_{\text{eff}}(\omega) \approx \frac{A_0^2}{\sigma^2}\left(S_2 - S_1^2/S_0\right)$ as given earlier, and $\mathcal{I}_{\text{eff}}(\tau)$ and the cross terms are obtained from the Schur complement.
+\]
+where, using the weighted sums:
+\begin{align}
+\mathcal{I}_{AA} &= \frac{1}{\sigma^2} S_0, &
+\mathcal{I}_{\phi\phi} &= \frac{A_0^2}{\sigma^2} S_0, \\
+\mathcal{I}_{A\omega} &= 0, &
+\mathcal{I}_{A\tau} &= \frac{1}{\sigma^2} \frac{S_1}{\tau^2}, \\
+\mathcal{I}_{\phi\omega} &= \frac{A_0^2}{\sigma^2} S_1, &
+\mathcal{I}_{\omega\omega} &= \frac{A_0^2}{\sigma^2} S_2, \\
+\mathcal{I}_{\tau\tau} &= \frac{A_0^2}{\sigma^2} \frac{S_2}{\tau^4}, &
+\mathcal{I}_{\omega\tau} &= 0.
+\end{align}
 
-For the transformation $Q = g(\omega, \tau) = \omega \tau / 2$, the Jacobian matrix is:
-\begin{equation}
-\mathbf{J} = \begin{bmatrix}
-\frac{\partial Q}{\partial \omega} & \frac{\partial Q}{\partial \tau}
-\end{bmatrix} = \begin{bmatrix}
-\frac{\tau}{2} & \frac{\omega}{2}
+Let $\mathbf{z} = [\omega, \tau]^T$ be the parameters of interest, and $\mathbf{u} = [A_0, \phi]^T$ the nuisance parameters. The Schur complement gives the effective Fisher information for $\mathbf{z}$:
+\[
+\mathcal{I}_{\text{eff}}(\mathbf{z}) = 
+\begin{bmatrix}
+\mathcal{I}_{\omega\omega} & \mathcal{I}_{\omega\tau} \\
+\mathcal{I}_{\tau\omega} & \mathcal{I}_{\tau\tau}
+\end{bmatrix}
+-
+\begin{bmatrix}
+\mathcal{I}_{\omega A} & \mathcal{I}_{\omega\phi}  \\
+\mathcal{I}_{\tau A} & \mathcal{I}_{\tau\phi}
+\end{bmatrix}
+\begin{bmatrix}
+\mathcal{I}_{AA} & 0 \\
+0 & \mathcal{I}_{\phi\phi}
+\end{bmatrix}^{-1}
+\begin{bmatrix}
+\mathcal{I}_{A\omega} & \mathcal{I}_{A\tau} \\
+\mathcal{I}_{\phi\omega} & \mathcal{I}_{\phi\tau}
 \end{bmatrix}.
-\end{equation}
+\]
 
-The CRLB for $Q$ is obtained from the transformation formula:
-\begin{equation}
-\sigma_Q^2 \geq \mathbf{J} \cdot \text{Cov}(\omega, \tau) \cdot \mathbf{J}^T.
-\end{equation}
-
-For the case where the correlation between $\omega$ and $\tau$ through nuisance parameters is small, we can approximate:
-\begin{equation}
-\sigma_Q^2 \gtrsim \left(\frac{\tau}{2}\right)^2 \sigma_\omega^2 + \left(\frac{\omega}{2}\right)^2 \sigma_\tau^2 + 2 \cdot \frac{\tau}{2} \cdot \frac{\omega}{2} \cdot \text{Cov}(\omega, \tau),
-\end{equation}
-where $\sigma_\omega^2$ and $\sigma_\tau^2$ are the CRLBs for $\omega$ and $\tau$ respectively.
-
-The CRLB for $\tau$ can be derived similarly to that for $\omega$. From the Fisher information matrix, the effective Fisher information for $\tau$ (accounting for nuisance parameters) is:
-\begin{equation}
-\mathcal{I}_{\text{eff}}(\tau) \approx \frac{A_0^2}{\sigma^2}\left(\sum_n \frac{t_n^2}{\tau^4} e^{-2t_n/\tau} - \frac{\left(\sum_n \frac{t_n}{\tau^2} e^{-2t_n/\tau}\right)^2}{\sum_n e^{-2t_n/\tau}}\right).
-\end{equation}
-
-Using the weighted sums $S_0$, $S_1$, $S_2$ defined earlier, and defining $S_3 = \sum_n t_n^3 e^{-2t_n/\tau}$ and $S_4 = \sum_n t_n^4 e^{-2t_n/\tau}$, we have:
-\begin{equation}
-\mathcal{I}_{\text{eff}}(\tau) \approx \frac{A_0^2}{\sigma^2 \tau^4}\left(S_4 - \frac{S_1^2}{S_0}\right),
-\end{equation}
-so that:
-\begin{equation}
-\sigma_\tau^2 \gtrsim \frac{\sigma^2 \tau^4}{A_0^2\left(S_4 - S_1^2/S_0\right)}.
-\end{equation}
-
-For $T \gg \tau$, following the pattern $S_k \approx \tau^{k+1}/(c_k T_s)$ for $k \geq 2$, we have $S_4 \approx \tau^5/(c_4 T_s)$ where $c_4$ is a constant of order unity. The CRLB for $\tau$ then scales approximately as:
-\begin{equation}
-\sigma_\tau^2 \gtrsim \frac{\sigma^2 \tau^4 T_s}{A_0^2 \tau^5} = \frac{\sigma^2 T_s}{A_0^2 \tau},
-\end{equation}
-where we have neglected the $S_1^2/S_0$ correction term which is small compared to $S_4$ for $T \gg \tau$.
-
-Combining the results and using $Q = \pi f \tau$ (or $Q = \omega \tau / 2$), the CRLB for $Q$ is:
-\begin{equation}
+Since $\mathcal{I}_{\omega A} = \mathcal{I}_{A\omega} = 0$ and $\mathcal{I}_{\tau\phi} = \mathcal{I}_{\phi\tau} = 0$ in the averaged FIM (Eq.~\eqref{eq:fisher-matrix}), the Schur complement yields:
+\begin{align}
+\mathcal{I}_{\omega\omega}^{\text{eff}} &= \mathcal{I}_{\omega\omega} - \frac{\mathcal{I}_{\omega\phi}^2}{\mathcal{I}_{\phi\phi}}
+= \frac{A_0^2}{\sigma^2} \left( S_2 - \frac{S_1^2}{S_0} \right), \\
+\mathcal{I}_{\tau\tau}^{\text{eff}} &= \mathcal{I}_{\tau\tau} - \frac{\mathcal{I}_{\tau A}^2}{\mathcal{I}_{AA}}
+= \frac{A_0^2}{\sigma^2 \tau^4} \left( S_2 - \frac{S_1^2}{S_0} \right), \\
+\mathcal{I}_{\omega\tau}^{\text{eff}} &= \mathcal{I}_{\omega\tau} - \frac{\mathcal{I}_{\omega A} \mathcal{I}_{A\tau}}{\mathcal{I}_{AA}} - \frac{\mathcal{I}_{\omega\phi} \mathcal{I}_{\phi\tau}}{\mathcal{I}_{\phi\phi}} = 0,
+\end{align}
+since $\mathcal{I}_{\omega\tau} = 0$, $\mathcal{I}_{\omega A} = 0$, and $\mathcal{I}_{\phi\tau} = 0$. Therefore,
+\[
 \boxed{
-\sigma_Q^2 \gtrsim (\pi \tau)^2 \sigma_f^2 + (\pi f_0)^2 \sigma_\tau^2 = \frac{\tau^2}{4} \sigma_\omega^2 + (\pi f_0)^2 \sigma_\tau^2,
-\label{eq:crlb-Q}
+\mathcal{I}_{\omega\tau}^{\text{eff}} = 0.
 }
-\end{equation}
-where $\sigma_f^2$ is given by Eq.~\eqref{eq:crlb-ringdown} and $\sigma_\tau^2$ is obtained from the Fisher information for $\tau$.
+\]
+Under the standard high-SNR, many-cycle approximation, $\omega$ and $\tau$ are asymptotically uncorrelated even after marginalizing $A_0$ and $\phi$. The effective FIM for $(\omega, \tau)$ remains diagonal.
 
-For the slow-decay regime ($T \ll \tau$), where the amplitude remains approximately constant, the bound simplifies. For the rapid-decay regime ($T \gg \tau$), the effective observation time is limited by $\tau$, and the bound scales approximately as $\tau^{-1}$ for the $\tau$ contribution and $\tau^{-3}$ for the frequency contribution, with the frequency term typically dominating.
+Thus,
+\begin{equation}
+\mathcal{I}_{\text{eff}}(\omega,\tau) =
+\frac{A_0^2}{\sigma^2}
+\begin{bmatrix}
+S_2 - S_1^2/S_0 & 0 \\
+0 & \frac{1}{\tau^4}\left(S_2 - S_1^2/S_0\right)
+\end{bmatrix}
+\equiv
+\frac{A_0^2}{\sigma^2} \, \Delta S_2 \,
+\begin{bmatrix}
+1 & 0 \\
+0 & \tau^{-4}
+\end{bmatrix},
+\label{eq:I_eff_wt}
+\end{equation}
+where $\Delta S_2 \triangleq S_2 - S_1^2/S_0 > 0$.
+
+The covariance matrix for $(\omega, \tau)$ is the inverse:
+\[
+\operatorname{Cov}(\omega, \tau) \succeq
+\frac{\sigma^2}{A_0^2 \Delta S_2}
+\begin{bmatrix}
+1 & 0 \\
+0 & \tau^4
+\end{bmatrix}.
+\]
+
+\subsubsection{CRLB for $Q$}
+
+Let $Q = g(\omega, \tau) = \omega \tau / 2$. The Jacobian is
+\[
+\mathbf{J} = \begin{bmatrix}
+\partial Q/\partial\omega & \partial Q/\partial\tau
+\end{bmatrix}
+= \begin{bmatrix}
+\tau/2 & \omega/2
+\end{bmatrix}.
+\]
+
+The CRLB for $Q$ is:
+\begin{align}
+\sigma_Q^2 &\ge \mathbf{J} \operatorname{Cov}(\omega,\tau) \mathbf{J}^T \nonumber \\
+&= \frac{\sigma^2}{A_0^2 \Delta S_2}
+\left[
+\left(\frac{\tau}{2}\right)^2 \cdot 1 + \left(\frac{\omega}{2}\right)^2 \cdot \tau^4
+\right] \nonumber \\
+&= \frac{\sigma^2}{A_0^2 \Delta S_2} \cdot \frac{\tau^2}{4} \left( 1 + \omega^2 \tau^2 \right).
+\end{align}
+
+Since $Q = \omega \tau / 2$, we have $\omega^2 \tau^2 = 4Q^2$, so
+\begin{equation}
+\sigma_Q^2 \ge \frac{\sigma^2 \tau^2}{4 A_0^2 \Delta S_2} \left( 1 + 4Q^2 \right).
+\label{eq:crlb-Q-final}
+\end{equation}
+
+This is the asymptotic CRLB for $Q$.
+
+\subsubsection{Interpretation}
+
+- For \textbf{low-$Q$ systems} ($Q \ll 1$), $1 + 4Q^2 \approx 1$, and the bound is dominated by uncertainty in $\tau$:
+  $\sigma_Q^2 \propto \tau^2 / \Delta S_2$.
+  For $T \gg \tau$, $\Delta S_2 \approx \tau^3/(8T_s)$, so $\sigma_Q^2 \propto T_s / (\tau A_0^2)$.
+
+- For \textbf{high-$Q$ systems} ($Q \gg 1$), $1 + 4Q^2 \approx 4Q^2$, giving
+  \[
+  \sigma_Q^2 \gtrsim \frac{\sigma^2 \tau^2}{A_0^2 \Delta S_2} Q^2,
+  \quad\Rightarrow\quad
+  \frac{\sigma_Q}{Q} \gtrsim \frac{\sigma \tau}{A_0 \sqrt{\Delta S_2}}.
+  \]
+  Since $\Delta S_2 \sim \tau^3$, the relative error scales as
+  $\sigma_Q/Q \propto 1/\sqrt{\tau}$ for $T \gg \tau$ — i.e., improves as $\sqrt{Q}$.
+
+- In the \textbf{slow-decay limit} ($T \ll \tau$), $\Delta S_2 \approx NT^2/12$, and
+  \[
+  \frac{\sigma_Q^2}{Q^2} \gtrsim 
+  \frac{12}{\rho_0} \left( \frac{1}{N^3} + \frac{4\pi^2}{N} \right),
+  \]
+  where the first term is from frequency error and the second from decay-time error. For high $Q$, the $4\pi^2/N$ term dominates, indicating that estimating $Q$ is much harder than estimating $f$ alone.
 
 \subsection{Scaling relationships and design levers}
 \label{sec:crlb-scaling}
 
-The CRLB in Eq.~\eqref{eq:crlb-ringdown} reveals the fundamental scaling relationships that govern frequency estimation accuracy. Understanding these relationships identifies the key parameters that can be controlled to achieve high accuracy measurements.
+The CRLB in Eq.~\eqref{eq:crlb-ringdown} reveals fundamental scaling relationships that govern frequency estimation accuracy and identify key controllable parameters.
 
 \subsubsection{Regime-dependent scalings}
 
@@ -214,31 +273,31 @@ For the slow-decay regime ($T \ll \tau$), where the amplitude remains approximat
 \sigma_f^2 \propto \frac{1}{\rho_0 T_s^2 N^3} = \frac{1}{\rho_0 T^3 f_s},
 \label{eq:scaling-slow-decay}
 \end{equation}
-where $\rho_0 = A_0^2/(2\sigma^2)$ is the initial SNR. This recovers the well-known $T^{-3}$ scaling for constant-amplitude sinusoids, where longer observation times provide cubic improvement in frequency accuracy.
+where $\rho_0 = A_0^2/(2\sigma^2)$ is the initial SNR. This recovers the well-known $T^{-3}$ scaling for constant-amplitude sinusoids.
 
-For the rapid-decay regime ($T \gg \tau$), the sums saturate and the effective observation time is limited by $\tau$. Using $S_0 \approx \tau/(2T_s)$, $S_1 \approx \tau^2/(4T_s)$, and $S_2 \approx \tau^3/(4T_s)$, we find:
+For the rapid-decay regime ($T \gg \tau$), using the saturated sums from above, we find:
 \begin{equation}
 \sigma_f^2 \propto \frac{1}{\rho_0 \tau^3 f_s}.
 \label{eq:scaling-rapid-decay}
 \end{equation}
-In this regime, extending the observation time beyond $\tau$ provides diminishing returns, as the later samples contribute negligible information due to their exponentially reduced amplitude. The accuracy is fundamentally limited by the decay time constant $\tau$ and the initial SNR.
+In this regime, extending the observation time beyond $\tau$ provides diminishing returns, as later samples contribute negligible information due to exponentially reduced amplitude. The accuracy is fundamentally limited by $\tau$ and $\rho_0$.
 
-For the intermediate regime ($T \sim \tau$), the scaling interpolates between these two limits. The effective observation time is approximately $\min(T, \tau)$, and the bound transitions smoothly from $T^{-3}$ to $\tau^{-3}$ scaling.
+For the intermediate regime ($T \sim \tau$), the scaling interpolates between these limits, with effective observation time approximately $\min(T, \tau)$.
 
 \subsubsection{Controllable parameters}
 
 The key parameters that can be adjusted to improve frequency estimation accuracy are:
 
 \begin{enumerate}
-\item \textbf{Initial signal-to-noise ratio $\rho_0 = A_0^2/(2\sigma^2)$}: The CRLB scales inversely with $\rho_0$, so doubling the SNR (either by increasing $A_0$ or reducing $\sigma$) improves frequency accuracy by a factor of $\sqrt{2}$. This is a linear improvement in standard deviation, making SNR one of the most direct levers for improving accuracy. However, increasing $A_0$ may be limited by system dynamics or saturation, while reducing $\sigma$ requires better instrumentation, shielding, or averaging.
+\item \textbf{Initial signal-to-noise ratio $\rho_0 = A_0^2/(2\sigma^2)$}: The CRLB scales inversely with $\rho_0$, so doubling the SNR improves frequency accuracy by a factor of $\sqrt{2}$. Increasing $A_0$ may be limited by system dynamics or saturation, while reducing $\sigma$ requires better instrumentation, shielding, or averaging.
 
-\item \textbf{Observation time $T = NT_s$}: For $T \ll \tau$, the accuracy improves as $T^{-3/2}$ (standard deviation scales as $T^{-3/2}$). This cubic improvement in variance makes observation time a powerful lever, but only up to the point where $T \sim \tau$. Beyond this point, further increases in $T$ provide minimal benefit. The optimal observation time is typically $T \approx 2$--$3\tau$, capturing most of the signal energy while avoiding excessive noise from late-time samples.
+\item \textbf{Observation time $T = NT_s$}: For $T \ll \tau$, the standard deviation scales as $T^{-3/2}$, making observation time a powerful lever up to $T \sim \tau$. Beyond this point, further increases provide minimal benefit. The optimal observation time is typically $T \approx 2$--$3\tau$, capturing most signal energy while avoiding excessive late-time noise.
 
-\item \textbf{Quality factor $Q$ and decay time $\tau = Q/(\pi f_0)$}: For ring-down measurements, $Q$ is often a fundamental property of the oscillator. Higher $Q$ (longer $\tau$) improves accuracy in two ways: (1) it extends the regime where $T \ll \tau$ applies, allowing longer effective observation times, and (2) in the rapid-decay regime, it directly improves the bound through the $\tau^{-3}$ scaling. However, $Q$ is typically constrained by the physical system and cannot be arbitrarily increased.
+\item \textbf{Quality factor $Q$ and decay time $\tau = Q/(\pi f_0)$}: Higher $Q$ (longer $\tau$) improves accuracy by extending the regime where $T \ll \tau$ applies and, in the rapid-decay regime, through the $\tau^{-3}$ scaling. However, $Q$ is typically constrained by the physical system.
 
-\item \textbf{Sampling rate $f_s = 1/T_s$}: The sampling rate appears in the denominator of the CRLB, but its effect is nuanced. For fixed observation time $T$, increasing $f_s$ (and thus $N$) provides modest improvement through the $N^3$ scaling in the slow-decay regime. However, for fixed $N$, increasing $f_s$ reduces $T$ and degrades accuracy. The optimal strategy is to sample at a rate sufficient to avoid aliasing ($f_s > 2f_0$) and capture the signal dynamics, then maximize $T$ within the constraint $T \lesssim 3\tau$.
+\item \textbf{Sampling rate $f_s = 1/T_s$}: For fixed $T$, increasing $f_s$ (and thus $N$) provides modest improvement through the $N^3$ scaling in the slow-decay regime. For fixed $N$, increasing $f_s$ reduces $T$ and degrades accuracy. The optimal strategy is to sample at a rate sufficient to avoid aliasing ($f_s > 2f_0$) and capture signal dynamics, then maximize $T$ within the constraint $T \lesssim 3\tau$.
 
-\item \textbf{Number of samples $N$}: For fixed sampling rate, $N$ determines $T = NT_s$. The scaling is effectively through $T$ rather than $N$ directly, as long as $N$ is sufficient to resolve the signal frequency (typically $N \gg f_s/f_0$ to have many cycles).
+\item \textbf{Number of samples $N$}: For fixed sampling rate, $N$ determines $T = NT_s$. The scaling is effectively through $T$ rather than $N$ directly, as long as $N \gg f_s/f_0$ to have many cycles.
 \end{enumerate}
 
 \subsubsection{Trade-offs and practical considerations}
@@ -246,13 +305,13 @@ The key parameters that can be adjusted to improve frequency estimation accuracy
 The scaling relationships reveal several important trade-offs:
 
 \begin{itemize}
-\item \textbf{SNR vs.\ observation time}: For a fixed total measurement budget, there is a trade-off between improving SNR (e.g., through signal averaging or better instrumentation) and extending observation time. In the slow-decay regime, $T^{-3}$ scaling typically favors longer observation times, but SNR improvements may be more practical or cost-effective.
+\item \textbf{SNR vs.\ observation time}: For a fixed measurement budget, there is a trade-off between improving SNR and extending observation time. In the slow-decay regime, $T^{-3}$ scaling favors longer observation times, but SNR improvements may be more practical.
 
-\item \textbf{Sampling rate vs.\ observation time}: For a fixed data acquisition budget (storage or processing constraints), increasing $f_s$ reduces $T$ for fixed $N$, which can degrade accuracy. The optimal choice balances frequency resolution needs with observation time requirements.
+\item \textbf{Sampling rate vs.\ observation time}: For fixed data acquisition budget, increasing $f_s$ reduces $T$ for fixed $N$, which can degrade accuracy. The optimal choice balances frequency resolution with observation time requirements.
 
-\item \textbf{Decay time limitation}: The exponential decay fundamentally limits the information content. Once $T \gtrsim 3\tau$, additional observation time provides minimal benefit. This suggests that for high-$Q$ systems (long $\tau$), longer observation times are beneficial, while for low-$Q$ systems, the accuracy is quickly limited by the decay.
+\item \textbf{Decay time limitation}: The exponential decay fundamentally limits information content. Once $T \gtrsim 3\tau$, additional observation time provides minimal benefit. For high-$Q$ systems (long $\tau$), longer observation times are beneficial; for low-$Q$ systems, accuracy is quickly limited by the decay.
 
-\item \textbf{Systematic error floor}: As discussed in Sec.~\ref{sec:systematic-effects}, timebase scale errors $\epsilon$ introduce a systematic bias $\sim \epsilon f_0$ that cannot be reduced by longer averaging or higher SNR. This sets a fundamental accuracy floor that must be addressed through timebase calibration rather than statistical improvements.
+\item \textbf{Systematic error floor}: As discussed in Sec.~\ref{sec:systematic-effects}, timebase scale errors $\epsilon$ introduce a systematic bias $\sim \epsilon f_0$ that cannot be reduced by longer averaging or higher SNR, setting a fundamental accuracy floor that must be addressed through timebase calibration.
 \end{itemize}
 
 \subsubsection{Design guidelines}
@@ -287,7 +346,7 @@ J = \sum_{n=0}^{N-1} \left[x_n - A_0 e^{-t_n/\tau}\cos(2\pi f t_n + \phi) - c\ri
 \end{equation}
 over parameters $(A_0,\phi,f,\tau,c)$ provides a maximum-likelihood estimator under Gaussian noise assumptions.
 
-When $\tau$ is known (e.g., from separate measurement of $Q$), the problem reduces to estimating $(A_0,\phi,f,c)$ with the exponential decay envelope fixed. The NLS estimator can approach the CRLB in Eq.~\eqref{eq:crlb-ringdown} for sufficiently long records and high SNR.
+When $\tau$ is known (e.g., from separate measurement of $Q$), the problem reduces to estimating $(A_0,\phi,f,c)$ with the exponential decay envelope fixed. The NLS estimator approaches the CRLB in Eq.~\eqref{eq:crlb-ringdown} for sufficiently long records and high SNR.
 
 When $\tau$ is unknown, it must be estimated jointly with the frequency. The Fisher information matrix shows coupling between $\tau$ and $A_0$, but the frequency estimate remains efficient if the decay is well-characterized.
 
@@ -308,11 +367,11 @@ For a ring-down signal, the exponential amplitude modulation broadens the spectr
 
 \subsection{Peak fitting with Lorentzian function}
 
-Since the Fourier transform of ring-down signals has a Lorentzian shape, fitting a Lorentzian function to the power spectrum is more appropriate than parabolic interpolation, which assumes a quadratic peak shape. A practical estimator:
+Since the Fourier transform of ring-down signals has a Lorentzian shape, fitting a Lorentzian function to the power spectrum is more appropriate than parabolic interpolation. A practical estimator:
 
 \begin{enumerate}
 \item Find the peak bin $k_{\max} = \arg\max_k |X[k]|^2$.
-\item Fit a Lorentzian function $P(f) = A / ((f - f_0)^2 + (\gamma/2)^2) + \text{offset}$ to the power spectrum $P[k] = |X[k]|^2$ around the peak using multiple bins (typically 5--7 bins).
+\item Fit a Lorentzian function to the power spectrum $P[k] = |X[k]|^2$ around the peak using multiple bins (typically 5--7 bins).
 \item Extract the center frequency $f_0$ from the fitted Lorentzian parameters.
 \item Output $\widehat{f} = f_0$.
 \end{enumerate}
@@ -323,14 +382,14 @@ P(f) = \frac{A}{(f - f_0)^2 + (\gamma/2)^2} + P_{\text{offset}},
 \end{equation}
 where $A$ is the amplitude, $f_0$ is the center frequency, $\gamma$ is the full width at half maximum (FWHM), and $P_{\text{offset}}$ is a background offset. The fitting is performed using nonlinear least squares on the power spectrum values around the peak bin.
 
-This approach is more accurate than parabolic interpolation for ring-down signals because it matches the actual spectral shape. Parabolic interpolation assumes a quadratic peak shape, which introduces bias when the true peak is Lorentzian. The bias is particularly significant when the peak is broad (small $\tau$ or low $Q$), where the Lorentzian shape deviates substantially from quadratic.
+This approach reduces bias compared to parabolic interpolation, which assumes a quadratic peak shape. The improvement is most significant for broad peaks (small $\tau$ or low $Q$), where the Lorentzian shape deviates substantially from quadratic.
 
 \subsection{Uncertainty scaling and efficiency}
 \label{sec:dft-efficiency}
 
-The CRLB in Eq.~\eqref{eq:crlb-ringdown} applies to \emph{any} unbiased frequency estimator, including DFT-based methods. However, DFT peak estimators are generally \emph{not} statistically efficient and do not achieve this bound. The inefficiency arises from information loss from windowing, discrete frequency sampling, suboptimal use of data (using only magnitude-squared values for a few bins rather than all samples), and amplitude decay effects that broaden the spectral peak. Even with optimized windows like Kaiser ($\beta \approx 9$) for high side-lobe suppression, the main lobe width is typically several bins wide, and the DFT remains a linear projection onto a fixed frequency grid rather than optimizing over continuous parameter space like maximum likelihood estimation. The actual variance of DFT peak estimators typically exceeds the CRLB by a factor $\eta \geq 1$ that depends on window choice, fitting method, and the decay parameter $\tau$. 
+The CRLB in Eq.~\eqref{eq:crlb-ringdown} applies to any unbiased frequency estimator, including DFT-based methods. However, DFT peak estimators are generally not statistically efficient and do not achieve this bound. The inefficiency arises from information loss from windowing, discrete frequency sampling, suboptimal use of data (using only magnitude-squared values for a few bins rather than all samples), and amplitude decay effects that broaden the spectral peak. Even with optimized windows like Kaiser ($\beta \approx 9$), the DFT remains a linear projection onto a fixed frequency grid rather than optimizing over continuous parameter space. The actual variance of DFT peak estimators typically exceeds the CRLB by a factor $\eta \geq 1$ that depends on window choice, fitting method, and the decay parameter $\tau$.
 
-For ring-down signals, using Lorentzian fitting instead of parabolic interpolation reduces bias and can improve efficiency, particularly for broad peaks (small $\tau$). However, $\eta$ is typically still larger than for constant-amplitude signals due to the broader spectral peak from amplitude decay. The improvement from Lorentzian fitting is most significant when the peak width is comparable to or larger than the frequency bin spacing, where the mismatch between the assumed quadratic shape and the true Lorentzian shape is most pronounced.
+For ring-down signals, using Lorentzian fitting instead of parabolic interpolation reduces bias and can improve efficiency, particularly for broad peaks (small $\tau$). However, $\eta$ is typically still larger than for constant-amplitude signals due to the broader spectral peak from amplitude decay. The improvement is most significant when the peak width is comparable to or larger than the frequency bin spacing.
 
 \section{Systematic effects}
 \label{sec:systematic-effects}
@@ -362,12 +421,13 @@ We provide a Python analysis script (\texttt{examples/usage\_example.py}, functi
 For each Monte Carlo trial, the script:
 \begin{enumerate}
 \item Generates an independent realization with random noise and initial phase $\phi_0 \sim \mathcal{U}(-\pi, \pi)$.
-\item Calculates the CRLB from the explicit Fisher information matrix derivation.
+\item Calculates the CRLB from the explicit Fisher information matrix derivation for both frequency and quality factor $Q$.
 \item Estimates frequency using nonlinear least squares (with ring-down model) and DFT peak fitting with Lorentzian function (Kaiser window with $\beta = 9$).
-\item Computes error statistics: mean bias, standard deviation, and root-mean-square error.
+\item Estimates quality factor $Q$ using NLS (by estimating both frequency and decay time $\tau$, then computing $Q = \pi f \tau$).
+\item Computes error statistics: mean bias, standard deviation, and root-mean-square error for both frequency and $Q$ estimates.
 \end{enumerate}
 
-The script produces three figures comparing the performance of the two estimation methods for ring-down signals, shown in Figs.~\ref{fig:individual-v6}--\ref{fig:performance-v6}.
+The script produces figures comparing the performance of the estimation methods for ring-down signals. Frequency estimation results are shown in Figs.~\ref{fig:individual-v6}--\ref{fig:performance-v6}, and quality factor estimation results are shown in Figs.~\ref{fig:q-individual-v6}--\ref{fig:q-performance-v6}.
 
 \begin{figure}[htbp]
 \centering
@@ -390,13 +450,33 @@ The script produces three figures comparing the performance of the two estimatio
 \label{fig:performance-v6}
 \end{figure}
 
+\subsection{Quality factor estimation}
+
+The quality factor $Q$ is estimated from the NLS method by jointly estimating frequency $f$ and decay time $\tau$, then computing $Q = \pi f \tau$. The CRLB for $Q$ estimation is calculated from the explicit Fisher information matrix derivation in Sec.~\ref{sec:crlb-scaling}, accounting for the covariance between frequency and decay time estimates.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{q_estimation_ringdown_v6_individual.pdf}
+\caption{Error distribution for NLS quality factor ($Q$) estimation method applied to ring-down signals. The histogram shows the distribution of $Q$ estimation errors from 100 Monte Carlo trials. The vertical dashed lines indicate the CRLB standard deviation calculated from the explicit Fisher information matrix. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples ($T = \SI{10000}{s}$), initial $\text{SNR} = \SI{60}{dB}$, quality factor $Q = 10^4$ (decay time $\tau = \SI{636.6}{s}$). The NLS method achieves standard deviations close to the Q-CRLB, demonstrating efficient estimation of the quality factor.}
+\label{fig:q-individual-v6}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{q_estimation_ringdown_v6_performance.pdf}
+\caption{Performance metrics for quality factor ($Q$) estimation. Left panel: Standard deviation of $Q$ estimation errors for the NLS method, plotted on a logarithmic scale. The horizontal dashed line indicates the Q-CRLB. Right panel: Statistical efficiency $\eta = \sigma_{\text{CRLB}}/\sigma_{\text{method}}$, where $\eta = 1$ corresponds to achieving the CRLB. The NLS method achieves efficiency near unity for $Q$ estimation, demonstrating that the joint estimation of frequency and decay time provides statistically efficient quality factor estimates.}
+\label{fig:q-performance-v6}
+\end{figure}
+
 \section{Comparison and conclusions}
 
-Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation for ring-down signals, achieving the CRLB derived from the Fisher information matrix. The DFT peak fitting method with Lorentzian function and Kaiser window is computationally efficient and naturally handles multiple tones, but suffers from statistical inefficiency due to information loss from windowing and discrete frequency sampling.
+Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation, achieving the CRLB derived from the Fisher information matrix. The DFT peak fitting method with Lorentzian function and Kaiser window is computationally efficient and naturally handles multiple tones, but suffers from statistical inefficiency due to information loss from windowing and discrete frequency sampling.
 
-The exponential decay reduces the effective observation time and SNR, degrading estimation performance compared to constant-amplitude signals. The degradation depends on the ratio $T/\tau$: for $T \ll \tau$, the amplitude remains approximately constant over the observation window and performance is similar to a constant-amplitude signal, while for $T \gtrsim \tau$, the later samples contribute little information due to their reduced amplitude and the effective observation time is reduced.
+For quality factor estimation, the NLS method achieves the Q-CRLB by jointly estimating frequency and decay time. The CRLB for $Q$ accounts for the covariance between frequency and decay time estimates, and under the high-SNR, many-cycle approximation, these parameters are asymptotically uncorrelated after marginalizing nuisance parameters. The NLS method's ability to estimate both parameters jointly enables efficient $Q$ estimation, as demonstrated by the near-unity statistical efficiency shown in Fig.~\ref{fig:q-performance-v6}.
 
-Using Lorentzian fitting instead of parabolic interpolation for DFT-based frequency estimation reduces bias for ring-down signals, since the Fourier transform of ring-down signals has a Lorentzian shape. The improvement is most significant for broad peaks (small $\tau$ or low $Q$), where the mismatch between the assumed quadratic shape and the true Lorentzian shape is most pronounced. This bias reduction can improve the statistical efficiency of DFT-based estimators, though they still do not achieve the CRLB due to fundamental limitations from windowing and discrete frequency sampling.
+The exponential decay reduces the effective observation time and SNR, degrading estimation performance compared to constant-amplitude signals. The degradation depends on the ratio $T/\tau$: for $T \ll \tau$, performance is similar to a constant-amplitude signal, while for $T \gtrsim \tau$, later samples contribute little information due to reduced amplitude.
+
+Using Lorentzian fitting instead of parabolic interpolation reduces bias for ring-down signals, with improvement most significant for broad peaks (small $\tau$ or low $Q$). This bias reduction can improve the statistical efficiency of DFT-based estimators, though they still do not achieve the CRLB due to fundamental limitations from windowing and discrete frequency sampling.
 
 Both approaches maintain the fundamental scaling relationships, but with reduced prefactors due to the time-varying SNR. The ultimate accuracy remains limited by timebase calibration, with systematic errors $\sim \epsilon$ setting a floor that cannot be overcome by longer averaging.
 

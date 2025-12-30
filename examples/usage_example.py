@@ -27,13 +27,15 @@ from ringdownanalysis.legacy_ring_down_mc import (
     plot_individual_results,
     plot_aggregate_results,
     plot_performance_comparison,
+    plot_q_individual_results,
+    plot_q_performance_comparison,
 )
 
 
-def example_oop_signal_generation():
-    """Example: Generate ring-down signal using OOP API."""
+def example_signal_generation():
+    """Example: Generate ring-down signal."""
     print("=" * 70)
-    print("Example 1: Signal Generation (OOP API)")
+    print("Example 1: Signal Generation")
     print("=" * 70)
     
     # Create signal with specified parameters (matching LaTeX document)
@@ -68,10 +70,10 @@ def example_oop_signal_generation():
     print()
 
 
-def example_oop_frequency_estimation():
-    """Example: Estimate frequency using OOP API."""
+def example_frequency_estimation():
+    """Example: Estimate frequency."""
     print("=" * 70)
-    print("Example 2: Frequency Estimation (OOP API)")
+    print("Example 2: Frequency Estimation")
     print("=" * 70)
     
     # Generate test signal (matching LaTeX document parameters)
@@ -93,10 +95,10 @@ def example_oop_frequency_estimation():
     print()
 
 
-def example_oop_crlb():
-    """Example: Calculate CRLB using OOP API."""
+def example_crlb():
+    """Example: Calculate CRLB."""
     print("=" * 70)
-    print("Example 3: CRLB Calculation (OOP API)")
+    print("Example 3: CRLB Calculation")
     print("=" * 70)
     
     signal = RingDownSignal(f0=5.0, fs=100.0, N=1_000_000, A0=1.0, snr_db=60.0, Q=10000.0)
@@ -105,22 +107,30 @@ def example_oop_crlb():
     crlb_var = crlb_calc.variance(signal.A0, signal.sigma, signal.fs, signal.N, signal.tau)
     crlb_std = crlb_calc.standard_deviation(signal.A0, signal.sigma, signal.fs, signal.N, signal.tau)
     
+    crlb_var_q = crlb_calc.q_variance(signal.A0, signal.sigma, signal.fs, signal.N, signal.tau, signal.f0)
+    crlb_std_q = crlb_calc.q_standard_deviation(signal.A0, signal.sigma, signal.fs, signal.N, signal.tau, signal.f0)
+    
     print(f"Signal parameters:")
     print(f"  A0 = {signal.A0}")
     print(f"  sigma = {signal.sigma:.6f}")
     print(f"  fs = {signal.fs} Hz")
     print(f"  N = {signal.N}")
     print(f"  tau = {signal.tau:.2f} s")
-    print(f"\nCRLB:")
+    print(f"  f0 = {signal.f0} Hz")
+    print(f"  Q = {signal.Q:.1e}")
+    print(f"\nFrequency CRLB:")
     print(f"  Variance: {crlb_var:.6e} Hz²")
     print(f"  Std dev:  {crlb_std:.6e} Hz")
+    print(f"\nQ CRLB:")
+    print(f"  Variance: {crlb_var_q:.6e}")
+    print(f"  Std dev:  {crlb_std_q:.6e}")
     print()
 
 
-def example_oop_monte_carlo():
-    """Example: Run Monte Carlo analysis using OOP API."""
+def example_monte_carlo():
+    """Example: Run Monte Carlo analysis."""
     print("=" * 70)
-    print("Example 4: Monte Carlo Analysis (OOP API)")
+    print("Example 4: Monte Carlo Analysis")
     print("=" * 70)
     
     analyzer = MonteCarloAnalyzer()
@@ -138,38 +148,20 @@ def example_oop_monte_carlo():
     
     print(f"\nMonte Carlo Results:")
     print(f"  True frequency: {results['f0']:.6f} Hz")
+    print(f"  True Q: {results['Q']:.1e}")
     print(f"  NLS std: {results['stats']['nls']['std']:.6e} Hz")
     print(f"  DFT std: {results['stats']['dft']['std']:.6e} Hz")
     print(f"  CRLB std: {results['crlb_std']:.6e} Hz")
-    print()
-
-
-def example_compat_api():
-    """Example: Use compatibility layer (function-based API)."""
-    print("=" * 70)
-    print("Example 5: Compatibility Layer (Function-based API)")
-    print("=" * 70)
-    
-    # Generate signal using function API (matching LaTeX document parameters)
-    t, x, sigma, phi0, tau = generate_ringdown(
-        f0=5.0, fs=100.0, N=1_000_000, A0=1.0, snr_db=60.0, Q=10000.0,
-        rng=np.random.default_rng(42)
-    )
-    
-    # Estimate frequency using function API
-    f_nls = estimate_freq_nls_ringdown(x, 100.0)
-    f_dft = estimate_freq_dft(x, 100.0)
-    
-    print(f"Generated signal: {len(x)} samples")
-    print(f"NLS estimate: {f_nls:.6f} Hz")
-    print(f"DFT estimate: {f_dft:.6f} Hz")
+    if 'errors_q_nls' in results and len(results['errors_q_nls']) > 0:
+        print(f"  NLS Q std: {results['stats']['q_nls']['std']:.6e}")
+        print(f"  CRLB Q std: {results['crlb_std_q']:.6e}")
     print()
 
 
 def example_data_analysis():
     """Example: Analyze real data file (if available)."""
     print("=" * 70)
-    print("Example 6: Real Data Analysis (OOP API)")
+    print("Example 6: Real Data Analysis")
     print("=" * 70)
     
     # This would work if data files exist
@@ -223,7 +215,7 @@ def example_generate_latex_figures():
     print(f"  n_mc = {n_mc} trials")
     print()
     
-    # Run Monte Carlo analysis using OOP API
+    # Run Monte Carlo analysis
     analyzer = MonteCarloAnalyzer()
     results = analyzer.run(
         f0=f0,
@@ -245,7 +237,7 @@ def example_generate_latex_figures():
     print("Generating figures...")
     print("=" * 70)
     
-    # Generate and save figures
+    # Generate and save frequency estimation figures
     fig1 = plot_individual_results(results)
     fig1_path = output_dir / "freq_estimation_ringdown_v6_individual.pdf"
     fig1.savefig(fig1_path, bbox_inches="tight")
@@ -264,6 +256,22 @@ def example_generate_latex_figures():
     print(f"  Saved: {fig3_path}")
     plt.close(fig3)
     
+    # Generate and save Q estimation figures
+    if 'errors_q_nls' in results and len(results['errors_q_nls']) > 0:
+        fig4 = plot_q_individual_results(results)
+        fig4_path = output_dir / "q_estimation_ringdown_v6_individual.pdf"
+        fig4.savefig(fig4_path, bbox_inches="tight")
+        print(f"  Saved: {fig4_path}")
+        plt.close(fig4)
+        
+        fig5 = plot_q_performance_comparison(results)
+        fig5_path = output_dir / "q_estimation_ringdown_v6_performance.pdf"
+        fig5.savefig(fig5_path, bbox_inches="tight")
+        print(f"  Saved: {fig5_path}")
+        plt.close(fig5)
+    else:
+        print("  Warning: No Q estimation data available, skipping Q figures")
+    
     print()
     print("All figures generated successfully!")
     print()
@@ -271,16 +279,15 @@ def example_generate_latex_figures():
 
 if __name__ == "__main__":
     # Run all examples
-    example_oop_signal_generation()
-    example_oop_frequency_estimation()
-    example_oop_crlb()
-    example_oop_monte_carlo()
-    example_compat_api()
-    example_data_analysis()
+    # example_signal_generation()
+    # example_frequency_estimation()
+    # example_crlb()
+    # example_monte_carlo()
+    # example_data_analysis()
     
     # Generate LaTeX figures (can be run separately if needed)
     # Uncomment the line below to generate figures for the LaTeX document
-    # example_generate_latex_figures()
+    example_generate_latex_figures()
     
     print("=" * 70)
     print("All examples completed!")

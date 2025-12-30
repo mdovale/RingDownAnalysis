@@ -27,6 +27,77 @@ from .estimators import FrequencyEstimator, NLSFrequencyEstimator, DFTFrequencyE
 from .crlb import CRLBCalculator
 
 
+def _estimate_freq_and_tau_nls(x: np.ndarray, fs: float):
+    """
+    Estimate both frequency and tau using NLS (when tau is unknown).
+    
+    This is a helper function that performs the full NLS fit and returns
+    both f and tau estimates, which are needed to compute Q.
+    
+    Parameters:
+    -----------
+    x : np.ndarray
+        Signal samples
+    fs : float
+        Sampling frequency (Hz)
+    
+    Returns:
+    --------
+    tuple
+        (f_hat, tau_hat) or (None, None) if estimation fails
+    """
+    from scipy.optimize import least_squares
+    from .estimators import _estimate_initial_parameters_from_dft, _estimate_initial_tau_from_envelope
+    
+    N = len(x)
+    t = np.arange(N) / fs
+    
+    # Get initial parameter estimates
+    f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
+    
+    # Initial tau guess from envelope decay
+    tau_init = _estimate_initial_tau_from_envelope(x, t)
+    
+    def residuals(p):
+        A0, f, phi, tau, c = p
+        return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
+    
+    df = fs / N
+    f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
+    f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
+    
+    lb = [0.0, f_low, -np.pi, t[1], -np.inf]
+    ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t[-1], np.inf]
+    
+    try:
+        res = least_squares(
+            residuals,
+            x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
+            bounds=(lb, ub),
+            method="trf",
+            ftol=1e-8,
+            xtol=1e-8,
+            gtol=1e-8,
+            max_nfev=150,
+            verbose=0,
+        )
+        
+        if not res.success:
+            return (None, None)
+        
+        _, f_hat, _, tau_hat, _ = res.x
+        
+        # Sanity check
+        if f_hat < 0 or f_hat > 0.5 * fs or abs(f_hat - f0_init) > 0.5 * f0_init:
+            return (None, None)
+        if tau_hat <= 0 or tau_hat > 10.0 * t[-1]:
+            return (None, None)
+        
+        return (float(f_hat), float(tau_hat))
+    except Exception:
+        return (None, None)
+
+
 def _process_single_trial(args):
     """
     Process a single Monte Carlo trial (worker function for parallel processing).
@@ -39,7 +110,7 @@ def _process_single_trial(args):
     Returns:
     --------
     tuple
-        (trial_idx, error_nls, error_dft, success_flags)
+        (trial_idx, error_nls, error_dft, error_q_nls, success_flags)
     """
     trial_idx, signal_params, nls_estimator, dft_estimator, base_seed = args
     
@@ -63,7 +134,7 @@ def _process_single_trial(args):
                     "error_msg": str(e),
                 },
             )
-        return (trial_idx, None, None, {"generate": False, "error": str(e)})
+        return (trial_idx, None, None, None, {"generate": False, "error": str(e)})
     
     errors = {}
     results = {"nls": None, "dft": None}
@@ -103,7 +174,18 @@ def _process_single_trial(args):
                 },
             )
     
-    return (trial_idx, errors["nls"], errors["dft"], results)
+    # Estimate Q for NLS method (requires both f and tau)
+    error_q_nls = None
+    if errors["nls"] is not None:
+        try:
+            f_hat_nls, tau_hat = _estimate_freq_and_tau_nls(x, signal.fs)
+            if f_hat_nls is not None and tau_hat is not None:
+                Q_hat = np.pi * f_hat_nls * tau_hat
+                error_q_nls = Q_hat - signal.Q
+        except Exception:
+            pass
+    
+    return (trial_idx, errors["nls"], errors["dft"], error_q_nls, results)
 
 
 class MonteCarloAnalyzer:
@@ -176,9 +258,11 @@ class MonteCarloAnalyzer:
             - 'f0': true frequency
             - 'Q': quality factor
             - 'tau': decay time constant
-            - 'crlb_std': CRLB standard deviation
+            - 'crlb_std': CRLB standard deviation for frequency
+            - 'crlb_std_q': CRLB standard deviation for Q
             - 'errors_nls': frequency errors for NLS method
             - 'errors_dft': frequency errors for DFT method
+            - 'errors_q_nls': Q errors for NLS method
             - 'stats': statistics for each method
         """
         # Create signal to compute derived parameters
@@ -186,9 +270,13 @@ class MonteCarloAnalyzer:
         tau = signal.tau
         T = signal.T
         
-        # Calculate CRLB
+        # Calculate CRLB for frequency
         crlb_var = self.crlb_calc.variance(A0, signal.sigma, fs, N, tau)
         crlb_std = np.sqrt(crlb_var) if np.isfinite(crlb_var) else np.inf
+        
+        # Calculate CRLB for Q
+        crlb_var_q = self.crlb_calc.q_variance(A0, signal.sigma, fs, N, tau, f0)
+        crlb_std_q = np.sqrt(crlb_var_q) if np.isfinite(crlb_var_q) else np.inf
         
         # Use parallel processing if available
         use_parallel = HAS_MULTIPROCESSING and n_mc > 10
@@ -225,6 +313,7 @@ class MonteCarloAnalyzer:
         print(f"Parameters: f0={f0:.3f} Hz, fs={fs:.1f} Hz, N={N}, initial SNR={snr_db:.1f} dB")
         print(f"           Q={Q:.1e}, tau={tau:.2f} s, T/tau={T/tau:.2f}")
         print(f"CRLB std(f_hat) = {crlb_std:.6e} Hz (from explicit Fisher information)")
+        print(f"CRLB std(Q_hat) = {crlb_std_q:.6e} (from explicit Fisher information)")
         print(f"Using optimized DFT: Kaiser window (beta=9.0) + Lorentzian fitting\n")
         
         # Prepare arguments for processing
@@ -242,8 +331,8 @@ class MonteCarloAnalyzer:
         ]
         
         # Storage for errors
-        errors_dict = {i: {"nls": None, "dft": None} for i in range(n_mc)}
-        failure_counts = {"nls": 0, "dft": 0}
+        errors_dict = {i: {"nls": None, "dft": None, "q_nls": None} for i in range(n_mc)}
+        failure_counts = {"nls": 0, "dft": 0, "q_nls": 0}
         
         # Process trials with or without parallelization
         if use_parallel:
@@ -254,16 +343,19 @@ class MonteCarloAnalyzer:
                 with tqdm(total=n_mc, desc="Monte Carlo trials", unit="trial") as pbar:
                     for future in as_completed(futures):
                         try:
-                            trial_idx, err_nls, err_dft, success = future.result(timeout=timeout_per_trial)
+                            trial_idx, err_nls, err_dft, err_q_nls, success = future.result(timeout=timeout_per_trial)
                             errors_dict[trial_idx] = {
                                 "nls": err_nls,
                                 "dft": err_dft,
+                                "q_nls": err_q_nls,
                             }
                             
                             if err_nls is None:
                                 failure_counts["nls"] += 1
                             if err_dft is None:
                                 failure_counts["dft"] += 1
+                            if err_q_nls is None:
+                                failure_counts["q_nls"] += 1
                         except FutureTimeoutError:
                             timeout_count += 1
                             trial_idx = futures[future]
@@ -276,9 +368,10 @@ class MonteCarloAnalyzer:
                                 },
                             )
                             print(f"\n  Warning: Trial {trial_idx} timed out after {timeout_per_trial}s")
-                            errors_dict[trial_idx] = {"nls": None, "dft": None}
+                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None}
                             failure_counts["nls"] += 1
                             failure_counts["dft"] += 1
+                            failure_counts["q_nls"] += 1
                         except Exception as e:
                             trial_idx = futures[future]
                             logger.error(
@@ -292,9 +385,10 @@ class MonteCarloAnalyzer:
                                 exc_info=True,
                             )
                             print(f"\n  Warning: Trial {trial_idx} failed with error: {e}")
-                            errors_dict[trial_idx] = {"nls": None, "dft": None}
+                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None}
                             failure_counts["nls"] += 1
                             failure_counts["dft"] += 1
+                            failure_counts["q_nls"] += 1
                         
                         pbar.update(1)
                 
@@ -315,16 +409,19 @@ class MonteCarloAnalyzer:
                 iterator = trial_args
             
             for args in iterator:
-                trial_idx, err_nls, err_dft, success = _process_single_trial(args)
+                trial_idx, err_nls, err_dft, err_q_nls, success = _process_single_trial(args)
                 errors_dict[trial_idx] = {
                     "nls": err_nls,
                     "dft": err_dft,
+                    "q_nls": err_q_nls,
                 }
                 
                 if err_nls is None:
                     failure_counts["nls"] += 1
                 if err_dft is None:
                     failure_counts["dft"] += 1
+                if err_q_nls is None:
+                    failure_counts["q_nls"] += 1
                 
                 if not HAS_TQDM and (trial_idx + 1) % 20 == 0:
                     print(f"  Completed {trial_idx+1}/{n_mc} trials...")
@@ -332,9 +429,11 @@ class MonteCarloAnalyzer:
         # Extract errors
         errors_nls = [errors_dict[i]["nls"] for i in range(n_mc) if errors_dict[i]["nls"] is not None]
         errors_dft = [errors_dict[i]["dft"] for i in range(n_mc) if errors_dict[i]["dft"] is not None]
+        errors_q_nls = [errors_dict[i]["q_nls"] for i in range(n_mc) if errors_dict[i]["q_nls"] is not None]
         
         errors_nls = np.array(errors_nls)
         errors_dft = np.array(errors_dft)
+        errors_q_nls = np.array(errors_q_nls)
         
         # Report failures
         if any(failure_counts.values()):
@@ -364,6 +463,11 @@ class MonteCarloAnalyzer:
                 "std": np.std(errors_dft, ddof=1) if len(errors_dft) > 0 else np.nan,
                 "rmse": np.sqrt(np.mean(errors_dft**2)) if len(errors_dft) > 0 else np.nan,
             },
+            "q_nls": {
+                "mean": np.mean(errors_q_nls) if len(errors_q_nls) > 0 else np.nan,
+                "std": np.std(errors_q_nls, ddof=1) if len(errors_q_nls) > 0 else np.nan,
+                "rmse": np.sqrt(np.mean(errors_q_nls**2)) if len(errors_q_nls) > 0 else np.nan,
+            },
         }
         
         if logger.isEnabledFor(logging.INFO):
@@ -377,6 +481,9 @@ class MonteCarloAnalyzer:
                     "dft_std": float(stats['dft']['std']) if not np.isnan(stats['dft']['std']) else None,
                     "dft_bias": float(stats['dft']['mean']) if not np.isnan(stats['dft']['mean']) else None,
                     "crlb_std": float(crlb_std) if np.isfinite(crlb_std) else None,
+                    "q_nls_std": float(stats['q_nls']['std']) if len(errors_q_nls) > 0 and not np.isnan(stats['q_nls']['std']) else None,
+                    "q_nls_bias": float(stats['q_nls']['mean']) if len(errors_q_nls) > 0 and not np.isnan(stats['q_nls']['mean']) else None,
+                    "crlb_std_q": float(crlb_std_q) if np.isfinite(crlb_std_q) else None,
                 },
             )
         
@@ -384,6 +491,9 @@ class MonteCarloAnalyzer:
         print(f"  NLS:  std={stats['nls']['std']:.6e} Hz, bias={stats['nls']['mean']:.6e} Hz")
         print(f"  DFT:  std={stats['dft']['std']:.6e} Hz, bias={stats['dft']['mean']:.6e} Hz")
         print(f"  CRLB: std={crlb_std:.6e} Hz")
+        if len(errors_q_nls) > 0:
+            print(f"  NLS Q: std={stats['q_nls']['std']:.6e}, bias={stats['q_nls']['mean']:.6e}")
+            print(f"  CRLB Q: std={crlb_std_q:.6e}")
         
         return {
             "f0": f0,
@@ -393,8 +503,10 @@ class MonteCarloAnalyzer:
             "N": N,
             "snr_db": snr_db,
             "crlb_std": crlb_std,
+            "crlb_std_q": crlb_std_q,
             "errors_nls": errors_nls,
             "errors_dft": errors_dft,
+            "errors_q_nls": errors_q_nls,
             "stats": stats,
         }
 

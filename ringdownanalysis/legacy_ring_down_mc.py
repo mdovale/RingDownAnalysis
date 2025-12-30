@@ -933,6 +933,91 @@ def plot_performance_comparison(results: dict):
     return fig
 
 
+def plot_q_individual_results(results: dict):
+    """Plot Q error distributions for NLS method."""
+    if "errors_q_nls" not in results or len(results["errors_q_nls"]) == 0:
+        # Return empty figure if no Q data
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        ax.text(0.5, 0.5, "No Q estimation data available", 
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_title("Q Estimation Error Distribution")
+        return fig
+    
+    errors_q_nls = results["errors_q_nls"]
+    crlb_std_q = results.get("crlb_std_q", None)
+    
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    
+    ax.hist(errors_q_nls, bins=30, density=True, alpha=0.7, edgecolor="black")
+    ax.axvline(0, color="r", linestyle="--", label="Zero error")
+    if crlb_std_q is not None and np.isfinite(crlb_std_q):
+        ax.axvline(crlb_std_q, color="g", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
+        ax.axvline(-crlb_std_q, color="g", linestyle="--")
+    ax.set_xlabel("Q error")
+    ax.set_ylabel("Probability density")
+    ax.set_title(f"Nonlinear Least Squares (NLS) Q Estimation\nstd = {results['stats']['q_nls']['std']:.6e}")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+
+def plot_q_performance_comparison(results: dict):
+    """Plot Q performance metrics comparison."""
+    if "errors_q_nls" not in results or len(results["errors_q_nls"]) == 0:
+        # Return empty figure if no Q data
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        ax.text(0.5, 0.5, "No Q estimation data available", 
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_title("Q Estimation Performance")
+        return fig
+    
+    stats = results["stats"]
+    crlb_std_q = results.get("crlb_std_q", None)
+    
+    if crlb_std_q is None or not np.isfinite(crlb_std_q):
+        # Return empty figure if no CRLB data
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        ax.text(0.5, 0.5, "No Q-CRLB data available", 
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_title("Q Estimation Performance")
+        return fig
+    
+    methods = ["NLS"]
+    stds = [stats["q_nls"]["std"]]
+    efficiencies = [crlb_std_q / stats["q_nls"]["std"]] if stats["q_nls"]["std"] > 0 else [0.0]
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Standard deviation comparison
+    ax = axes[0]
+    x_pos = np.arange(len(methods))
+    bars = ax.bar(x_pos, stds, alpha=0.7, edgecolor="black")
+    ax.axhline(crlb_std_q, color="g", linestyle="--", linewidth=2, label=f"CRLB = {crlb_std_q:.2e}")
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(methods)
+    ax.set_ylabel("Standard deviation")
+    ax.set_title("Q Estimation Uncertainty")
+    ax.set_yscale("log")
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis="y")
+    
+    # Efficiency comparison
+    ax = axes[1]
+    bars = ax.bar(x_pos, efficiencies, alpha=0.7, edgecolor="black")
+    ax.axhline(1.0, color="r", linestyle="--", linewidth=2, label="CRLB (efficiency = 1)")
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(methods)
+    ax.set_ylabel("Efficiency (CRLB / std)")
+    ax.set_title("Statistical Efficiency")
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis="y")
+    
+    plt.tight_layout()
+    return fig
+
+
 # ============================================================================
 # Main execution
 # ============================================================================
