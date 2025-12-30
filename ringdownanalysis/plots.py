@@ -99,8 +99,6 @@ def apply_plotting_style():
 # Apply default styles automatically when module is imported
 apply_plotting_style()
 default_rc = get_default_rc()
-default_figsize = (7, 4.66)
-
 
 # ============================================================================
 # Monte Carlo analysis plotting functions
@@ -114,7 +112,7 @@ def plot_individual_results(results: dict, ax=None, figsize=None, dpi=None, *arg
     
     if ax is None:
         if figsize is None:
-            figsize = default_figsize
+            figsize = (6.5, 4.66)
         fig, axes = plt.subplots(2, 1, figsize=figsize, dpi=dpi)
     else:
         # If ax is provided, it should be an array of axes
@@ -143,7 +141,7 @@ def plot_individual_results(results: dict, ax=None, figsize=None, dpi=None, *arg
     ax_plot.axvline(-crlb_std, color="g", linestyle="--")
     ax_plot.set_xlabel("Frequency error (Hz)")
     ax_plot.set_ylabel("Probability density")
-    ax_plot.set_title(f"Optimized DFT with Lorentzian Fitting\nstd = {results['stats']['dft']['std']:.6e} Hz")
+    ax_plot.set_title(f"DFT std = {results['stats']['dft']['std']:.6e} Hz")
     apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3)
     
@@ -160,8 +158,8 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     
     if ax is None:
         if figsize is None:
-            figsize = default_figsize
-        fig, axes = plt.subplots(1, 2, figsize=figsize, dpi=dpi)
+            figsize = (6.5, 4.66)
+        fig, axes = plt.subplots(2, 1, figsize=figsize, dpi=dpi, gridspec_kw={'height_ratios': [1, 0.33]})
     else:
         # If ax is provided, it should be an array of axes
         if not isinstance(ax, np.ndarray) or ax.size != 2:
@@ -185,7 +183,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
         bins=30,
         density=True,
         alpha=0.6,
-        label=f"DFT with Lorentzian (std={results['stats']['dft']['std']:.2e})",
+        label=f"DFT (std={results['stats']['dft']['std']:.2e})",
         edgecolor="black",
         *args, **kwargs
     )
@@ -201,7 +199,7 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     # Box plot comparison
     ax_plot = axes[1]
     data = [errors_nls, errors_dft]
-    bp = ax_plot.boxplot(data, tick_labels=["NLS", "DFT Lorentzian"], patch_artist=True, *args, **kwargs)
+    bp = ax_plot.boxplot(data, tick_labels=["NLS", "DFT"], patch_artist=True, *args, **kwargs)
     for patch in bp["boxes"]:
         patch.set_facecolor("lightblue")
         patch.set_alpha(0.7)
@@ -209,7 +207,6 @@ def plot_aggregate_results(results: dict, ax=None, figsize=None, dpi=None, *args
     ax_plot.axhline(crlb_std, color="g", linestyle="--", linewidth=2, label=f"CRLB std = {crlb_std:.2e}")
     ax_plot.axhline(-crlb_std, color="g", linestyle="--", linewidth=2)
     ax_plot.set_ylabel("Frequency error (Hz)")
-    ax_plot.set_title("Error Distribution Comparison (Box Plot)")
     apply_legend(ax_plot)
     ax_plot.grid(True, alpha=0.3, axis="y")
     
@@ -223,13 +220,13 @@ def plot_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, 
     stats = results["stats"]
     crlb_std = results["crlb_std"]
     
-    methods = ["NLS", "DFT Lorentzian"]
+    methods = ["NLS", "DFT"]
     stds = [stats["nls"]["std"], stats["dft"]["std"]]
     efficiencies = [crlb_std / s for s in stds]  # Efficiency = CRLB/std
     
     if ax is None:
         if figsize is None:
-            figsize = default_figsize
+            figsize = (6.5, 3)
         fig, axes = plt.subplots(1, 2, figsize=figsize, dpi=dpi)
     else:
         # If ax is provided, it should be an array of axes
@@ -273,7 +270,7 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
         # Return empty axes if no Q data
         if ax is None:
             if figsize is None:
-                figsize = default_figsize
+                figsize = (6.5, 3)
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
             plt.tight_layout()
         else:
@@ -289,7 +286,7 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
     created_fig = False
     if ax is None:
         if figsize is None:
-            figsize = default_figsize
+            figsize = (6.5, 3)
         fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
         created_fig = True
     else:
@@ -317,7 +314,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
         # Return empty axes if no Q data
         if ax is None:
             if figsize is None:
-                figsize = default_figsize
+                figsize = (6.5, 3)
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
             plt.tight_layout()
         else:
@@ -334,7 +331,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
         # Return empty axes if no CRLB data
         if ax is None:
             if figsize is None:
-                figsize = default_figsize
+                figsize = (6.5, 3)
             fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
             plt.tight_layout()
         else:
@@ -350,7 +347,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     
     if ax is None:
         if figsize is None:
-            figsize = default_figsize
+            figsize = (6.5, 3)
         fig, axes = plt.subplots(1, 2, figsize=figsize, dpi=dpi)
     else:
         # If ax is provided, it should be an array of axes
