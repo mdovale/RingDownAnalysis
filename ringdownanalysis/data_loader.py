@@ -3,6 +3,7 @@ Data loading utilities for ring-down measurement files.
 """
 
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from typing import Optional, Tuple
 from scipy.io import loadmat
@@ -39,7 +40,7 @@ class RingDownDataLoader:
         """
         Load CSV data file from Moku:Lab Phasemeter.
         
-        Optimized version using efficient bulk parsing.
+        Optimized version using pandas for fast CSV parsing.
         
         Parameters:
         -----------
@@ -53,45 +54,29 @@ class RingDownDataLoader:
         data : np.ndarray
             Phase in cycles (detrended)
         """
-        # Optimized approach: read file in chunks and parse efficiently
-        # Read all lines at once (faster I/O than line-by-line)
-        with open(filepath, 'r') as f:
-            lines = f.readlines()
+        # Use pandas for fast CSV parsing
+        # Skip comment lines (starting with '%') and header rows
+        # Read only columns 0 (time) and 3 (phase)
+        try:
+            df = pd.read_csv(
+                filepath,
+                comment='%',  # Skip lines starting with '%'
+                header=None,  # No header row
+                usecols=[0, 3],  # Only read time (col 0) and phase (col 3)
+                dtype=float,
+                engine='c',  # Use C engine for better performance
+                na_values=[],  # Don't treat any values as NaN
+                skipinitialspace=True,  # Skip whitespace after delimiter
+            )
+        except (pd.errors.EmptyDataError, ValueError) as e:
+            raise ValueError(f"No valid data lines found in CSV file: {e}")
         
-        # Pre-allocate lists for better performance
-        # Filter and extract data in a single pass
-        time_data = []
-        phase_data = []
-        
-        for line in lines:
-            # Fast check: skip empty lines and comments
-            if not line or line[0] == '%':
-                continue
-            
-            # Quick validation: must have comma
-            if ',' not in line:
-                continue
-            
-            # Split once and check
-            parts = line.split(',')
-            if len(parts) < 4:
-                continue
-            
-            # Try to parse columns 0 and 3 directly
-            try:
-                t_val = float(parts[0].strip())
-                p_val = float(parts[3].strip())
-                time_data.append(t_val)
-                phase_data.append(p_val)
-            except (ValueError, IndexError):
-                continue
-        
-        if not time_data:
+        if df.empty:
             raise ValueError("No valid data lines found in CSV file")
         
-        # Convert to numpy arrays in one step (much faster than list of lists)
-        t_raw = np.array(time_data, dtype=float)
-        data_raw = np.array(phase_data, dtype=float)
+        # Extract time and phase columns
+        t_raw = df.iloc[:, 0].values  # Column 0: time
+        data_raw = df.iloc[:, 1].values  # Column 1 (was column 3): phase
         
         # Time starts from 0
         t = t_raw - t_raw[0]
