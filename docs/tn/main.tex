@@ -357,7 +357,7 @@ Frequency drift during ring-down is less common than in continuous measurements,
 
 \section{Numerical analysis}
 
-We provide a Python analysis script (\texttt{analysis\_freq\_estimation\_v6.py}) that implements NLS and DFT methods for ring-down signals and performs Monte Carlo simulations. The script generates a time series sampled at $f_s = \SI{100}{Hz}$ with $N = 10^6$ samples (observation time $T = \SI{10000}{s}$) containing a ring-down signal at $f_0 = \SI{5}{Hz}$ with quality factor $Q$ and additive white Gaussian noise.
+We provide a Python analysis script (\texttt{examples/usage\_example.py}, function \texttt{example\_generate\_latex\_figures()}) that implements NLS and DFT methods for ring-down signals and performs Monte Carlo simulations. The script generates a time series sampled at $f_s = \SI{100}{Hz}$ with $N = 10^6$ samples (observation time $T = \SI{10000}{s}$) containing a ring-down signal at $f_0 = \SI{5}{Hz}$ with quality factor $Q$ and additive white Gaussian noise.
 
 For each Monte Carlo trial, the script:
 \begin{enumerate}
