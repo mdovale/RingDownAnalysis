@@ -9,6 +9,7 @@ Usage:
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 from datetime import datetime
 import subprocess
@@ -30,59 +31,79 @@ def run_benchmarks(size: str = 'medium', output: str = None, verbose: bool = Tru
     # Ensure we're in the project root
     project_root = Path(__file__).parent.parent
     
-    # Run pytest-benchmark
-    cmd = [
-        sys.executable, '-m', 'pytest',
-        'benchmarks/benchmark_suite.py',
-        '--benchmark-only',
-        '--benchmark-json=-',  # Output to stdout
-        '-v',
-    ]
-    
-    # Filter by size if needed (we can add markers later)
-    if verbose:
-        print(f"Running benchmarks (size: {size})...")
-        print(f"Command: {' '.join(cmd)}\n")
+    # Create temporary file for JSON output
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+        tmp_json_path = tmp_file.name
     
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        # Run pytest-benchmark
+        cmd = [
+            sys.executable, '-m', 'pytest',
+            'benchmarks/benchmark_suite.py',
+            '--benchmark-only',
+            '--benchmark-json', tmp_json_path,  # Output to temp file
+            '-v',
+        ]
         
+        # Filter by size if needed (we can add markers later)
         if verbose:
-            print(result.stdout)
-            if result.stderr:
-                print("STDERR:", result.stderr, file=sys.stderr)
+            print(f"Running benchmarks (size: {size})...")
+            print(f"Command: {' '.join(cmd)}\n")
         
-        # Parse JSON output
         try:
-            benchmark_data = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            # If JSON parsing fails, try to extract from output
-            print("Warning: Could not parse JSON output. Benchmark may have failed.")
+            result = subprocess.run(
+                cmd,
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            
             if verbose:
-                print(result.stdout)
+                # Print stdout but filter out the JSON write message
+                stdout_lines = result.stdout.split('\n')
+                for line in stdout_lines:
+                    if 'Wrote benchmark data' not in line and line.strip():
+                        print(line)
+                if result.stderr:
+                    stderr_lines = result.stderr.split('\n')
+                    for line in stderr_lines:
+                        if line.strip() and 'Wrote benchmark data' not in line:
+                            print("STDERR:", line, file=sys.stderr)
+            
+            # Read JSON from temp file
+            try:
+                with open(tmp_json_path, 'r') as f:
+                    benchmark_data = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                print(f"Warning: Could not read JSON output from {tmp_json_path}: {e}")
+                if verbose:
+                    print(f"STDOUT: {result.stdout}")
+                    print(f"STDERR: {result.stderr}")
+                benchmark_data = None
+            
+            if benchmark_data:
+                # Save results
+                if output:
+                    output_path = Path(output)
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(output_path, 'w') as f:
+                        json.dump(benchmark_data, f, indent=2)
+                    print(f"\nResults saved to: {output_path}")
+            
+            return benchmark_data
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Benchmark failed with return code {e.returncode}", file=sys.stderr)
+            print(f"STDOUT: {e.stdout}", file=sys.stderr)
+            print(f"STDERR: {e.stderr}", file=sys.stderr)
             return None
-        
-        # Save results
-        if output:
-            output_path = Path(output)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, 'w') as f:
-                json.dump(benchmark_data, f, indent=2)
-            print(f"\nResults saved to: {output_path}")
-        
-        return benchmark_data
-        
-    except subprocess.CalledProcessError as e:
-        print(f"Benchmark failed with return code {e.returncode}", file=sys.stderr)
-        print(f"STDOUT: {e.stdout}", file=sys.stderr)
-        print(f"STDERR: {e.stderr}", file=sys.stderr)
-        return None
+    finally:
+        # Clean up temp file
+        try:
+            Path(tmp_json_path).unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def generate_report(benchmark_data: dict, output_path: str = None):
