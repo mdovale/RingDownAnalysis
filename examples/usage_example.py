@@ -76,17 +76,37 @@ def example_frequency_estimation():
     rng = np.random.default_rng(42)
     _, x, _ = signal.generate(rng=rng)
 
-    # NLS estimator
+    # NLS estimator - use estimate_full() to get f, tau, and Q
     nls_estimator = NLSFrequencyEstimator(tau_known=None)
-    f_nls = nls_estimator.estimate(x, signal.fs)
+    result_nls = nls_estimator.estimate_full(x, signal.fs)
+    f_nls = result_nls.f
+    tau_nls = result_nls.tau
+    Q_nls = result_nls.Q
 
-    # DFT estimator
+    # DFT estimator - use estimate_full() to get f, tau, and Q
     dft_estimator = DFTFrequencyEstimator(window="rect")
-    f_dft = dft_estimator.estimate(x, signal.fs)
+    result_dft = dft_estimator.estimate_full(x, signal.fs)
+    f_dft = result_dft.f
+    tau_dft = result_dft.tau
+    Q_dft = result_dft.Q
 
     print(f"True frequency: {signal.f0:.6f} Hz")
-    print(f"NLS estimate:    {f_nls:.6f} Hz (error: {abs(f_nls - signal.f0):.6e} Hz)")
-    print(f"DFT estimate:    {f_dft:.6f} Hz (error: {abs(f_dft - signal.f0):.6e} Hz)")
+    print(f"True tau: {signal.tau:.2f} s")
+    print(f"True Q: {signal.Q:.1e}")
+    print()
+    print("NLS estimates:")
+    print(f"  Frequency: {f_nls:.6f} Hz (error: {abs(f_nls - signal.f0):.6e} Hz)")
+    if tau_nls is not None:
+        print(f"  Tau: {tau_nls:.2f} s (error: {abs(tau_nls - signal.tau):.2e} s)")
+    if Q_nls is not None:
+        print(f"  Q: {Q_nls:.1e} (error: {abs(Q_nls - signal.Q):.1e})")
+    print()
+    print("DFT estimates:")
+    print(f"  Frequency: {f_dft:.6f} Hz (error: {abs(f_dft - signal.f0):.6e} Hz)")
+    if tau_dft is not None:
+        print(f"  Tau: {tau_dft:.2f} s (error: {abs(tau_dft - signal.tau):.2e} s)")
+    if Q_dft is not None:
+        print(f"  Q: {Q_dft:.1e} (error: {abs(Q_dft - signal.Q):.1e})")
     print()
 
 
