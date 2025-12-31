@@ -386,10 +386,10 @@ For each Monte Carlo trial, the script:
 \item Generates an independent realization with random noise and initial phase $\phi_0 \sim \mathcal{U}(-\pi, \pi)$.
 \item Calculates the CRLB from the explicit Fisher information matrix derivation for both frequency and quality factor $Q$.
 \item Estimates frequency using nonlinear least squares and windowed DFT peak fitting with Lorentzian function.
-\item Estimates quality factor $Q$ using both NLS and DFT+NLS hybrid methods:
+\item Estimates quality factor $Q$ using both NLS and DFT+NLS sequential methods:
   \begin{itemize}
   \item \textbf{NLS}: Jointly estimates frequency and decay time, then computes $Q = \pi f \tau$.
-  \item \textbf{DFT+NLS hybrid}: Two-step approach: (1) estimates frequency via DFT peak fitting with Lorentzian function, (2) estimates decay time via NLS with frequency fixed to the DFT result, then (3) computes $Q = \pi f \tau$.
+  \item \textbf{DFT+NLS two-step approach}: (1) estimates frequency via DFT peak fitting with Lorentzian function, (2) estimates decay time via NLS with frequency fixed to the DFT result, then $Q = \pi f \tau$.
   \end{itemize}
 \item Computes error statistics: mean bias, standard deviation, and root-mean-square error for both frequency and $Q$ estimates.
 \end{enumerate}
