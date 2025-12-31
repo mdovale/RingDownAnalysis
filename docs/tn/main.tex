@@ -333,8 +333,6 @@ J = \sum_{n=0}^{N-1} \left[x_n - A_0 e^{-t_n/\tau}\cos(2\pi f t_n + \phi) - c\ri
 \end{equation}
 over parameters $(A_0,\phi,f,\tau,c)$ provides a maximum-likelihood estimator under Gaussian noise assumptions.
 
-When $\tau$ is known (e.g., from separate measurement of $Q$), the problem reduces to estimating $(A_0,\phi,f,c)$ with the exponential decay envelope fixed. The NLS estimator approaches the CRLB in Eq.~\eqref{eq:crlb-ringdown} for sufficiently long records and high SNR.
-
 \section{Frequency-domain methods (DFT)}
 
 \subsection{DFT peak location}
@@ -343,7 +341,7 @@ The windowed discrete Fourier transform is
 \begin{equation}
 X[k] = \sum_{n=0}^{N-1} w_n x_n\,e^{-i 2\pi kn/N},\qquad k=0,1,\dots,N-1,
 \end{equation}
-where $w_n$ is a window function. We use a rectangular window (i.e., no window, $w_n = 1$) by default, which provides better results (lower uncertainty) for ring-down signals due to more efficient use of the data. The frequency grid spacing is
+where $w_n$ is a window function. We use a rectangular window (i.e., no window, $w_n = 1$), which provides better results (lower variance) for ring-down signals due to more efficient use of the data. The frequency grid spacing is
 \begin{equation}
 \Delta f = \frac{f_s}{N} = \frac{1}{T}.
 \end{equation}
@@ -375,7 +373,6 @@ The CRLB in Eq.~\eqref{eq:crlb-ringdown} applies to any unbiased estimator, but 
 \item {Windowing}: Applying a window function leads to information loss; this is why we use a rectangular window.
 \item {Phase discarding}: Using only the power spectrum discards half the information in the complex DFT coefficients. 
 \item {Discretization bias}: The DFT samples the spectrum at discrete frequencies; interpolation (even with Lorentzian fitting) cannot fully recover the continuous-parameter information. 
-%\item {Equal weighting}: The DFT treats all time samples equally, whereas optimal estimation can weight early (high-SNR) samples more heavily, a behavior NLS achieves automatically via its nonlinear cost function. 
 \end{itemize} 
 
 The above limitations ensure that DFT methods remain statistically suboptimal relative to NLS for ring-down signals.
@@ -436,15 +433,9 @@ The quality factor $Q$ is estimated from the NLS method by jointly estimating fr
 
 \section{Comparison and conclusions}
 
-Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation, achieving the CRLB derived from the Fisher information matrix. The DFT peak fitting method with Lorentzian function and rectangular window (no window) is computationally efficient and naturally handles multiple tones, but suffers from statistical inefficiency due to information loss from discrete frequency sampling.
-
-For quality factor estimation, the NLS method achieves the Q-CRLB by jointly estimating frequency and decay time. The CRLB for $Q$ accounts for the covariance between frequency and decay time estimates, and under the high-SNR, many-cycle approximation, these parameters are asymptotically uncorrelated after marginalizing nuisance parameters. The NLS method's ability to estimate both parameters jointly enables efficient $Q$ estimation, as demonstrated by the near-unity statistical efficiency shown in Fig.~\ref{fig:q-performance-v6}.
+Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation, achieving the CRLB derived from the Fisher information matrix. The DFT peak fitting method with Lorentzian function and rectangular window is computationally efficient, but suffers from statistical inefficiency due to information loss.
 
 The exponential decay reduces the effective observation time and SNR, degrading estimation performance compared to constant-amplitude signals. The degradation depends on the ratio $T/\tau$: for $T \ll \tau$, performance is similar to a constant-amplitude signal, while for $T \gtrsim \tau$, later samples contribute little information due to reduced amplitude.
-
-Using Lorentzian fitting instead of parabolic interpolation reduces bias for ring-down signals, with improvement most significant for broad peaks (small $\tau$ or low $Q$). This bias reduction can improve the statistical efficiency of DFT-based estimators, though they still do not achieve the CRLB due to fundamental limitations from windowing and discrete frequency sampling.
-
-Both approaches maintain the fundamental scaling relationships, but with reduced prefactors due to the time-varying SNR. The ultimate accuracy remains limited by timebase calibration, with systematic errors $\sim \epsilon$ setting a floor that cannot be overcome by longer averaging.
 
 \begin{thebibliography}{9}
 \bibitem{kay}
