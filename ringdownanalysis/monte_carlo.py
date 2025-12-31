@@ -150,11 +150,15 @@ def _process_single_trial(args):
     errors = {}
     results = {"nls": None, "dft": None}
 
-    # Estimate frequency using each method
+    # Estimate frequency, tau, and Q using estimate_full() for streamlined Q estimation
+    error_q_nls = None
     try:
-        f_hat_nls = nls_estimator.estimate(x, signal.fs)
-        errors["nls"] = f_hat_nls - signal.f0
+        result_nls = nls_estimator.estimate_full(x, signal.fs)
+        errors["nls"] = result_nls.f - signal.f0
         results["nls"] = True
+        # Extract Q error if available
+        if result_nls.Q is not None:
+            error_q_nls = result_nls.Q - signal.Q
     except Exception as e:
         errors["nls"] = None
         results["nls"] = False
@@ -169,8 +173,8 @@ def _process_single_trial(args):
             )
 
     try:
-        f_hat_dft = dft_estimator.estimate(x, signal.fs)
-        errors["dft"] = f_hat_dft - signal.f0
+        result_dft = dft_estimator.estimate_full(x, signal.fs)
+        errors["dft"] = result_dft.f - signal.f0
         results["dft"] = True
     except Exception as e:
         errors["dft"] = None
@@ -184,17 +188,6 @@ def _process_single_trial(args):
                     "error_type": type(e).__name__,
                 },
             )
-
-    # Estimate Q for NLS method (requires both f and tau)
-    error_q_nls = None
-    if errors["nls"] is not None:
-        try:
-            f_hat_nls, tau_hat = _estimate_freq_and_tau_nls(x, signal.fs)
-            if f_hat_nls is not None and tau_hat is not None:
-                Q_hat = np.pi * f_hat_nls * tau_hat
-                error_q_nls = Q_hat - signal.Q
-        except Exception:
-            pass
 
     return (trial_idx, errors["nls"], errors["dft"], error_q_nls, results)
 
