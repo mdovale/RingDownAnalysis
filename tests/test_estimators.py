@@ -5,7 +5,11 @@ Unit tests for frequency estimators.
 import numpy as np
 import pytest
 
-from ringdownanalysis.estimators import DFTFrequencyEstimator, NLSFrequencyEstimator
+from ringdownanalysis.estimators import (
+    DFTFrequencyEstimator,
+    EstimationResult,
+    NLSFrequencyEstimator,
+)
 from ringdownanalysis.signal import RingDownSignal
 
 
@@ -51,6 +55,37 @@ class TestNLSFrequencyEstimator:
 
         assert isinstance(f_est, float)
         assert 0 < f_est < signal.fs / 2
+
+    def test_estimate_full_unknown_tau(self):
+        """Test NLS estimate_full with unknown tau."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=10000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+
+        estimator = NLSFrequencyEstimator(tau_known=None)
+        result = estimator.estimate_full(x, signal.fs)
+
+        assert isinstance(result, EstimationResult)
+        assert abs(result.f - signal.f0) < 0.1
+        assert result.tau is not None
+        assert result.Q is not None
+        assert abs(result.tau - signal.tau) < signal.tau * 0.2  # Within 20%
+        assert abs(result.Q - signal.Q) < signal.Q * 0.2  # Within 20%
+
+    def test_estimate_full_known_tau(self):
+        """Test NLS estimate_full with known tau."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=10000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+
+        estimator = NLSFrequencyEstimator(tau_known=signal.tau)
+        result = estimator.estimate_full(x, signal.fs)
+
+        assert isinstance(result, EstimationResult)
+        assert abs(result.f - signal.f0) < 0.01
+        assert result.tau == signal.tau
+        assert result.Q is not None
+        assert abs(result.Q - signal.Q) < signal.Q * 0.01  # Very close with known tau
 
 
 class TestDFTFrequencyEstimator:
@@ -115,3 +150,20 @@ class TestDFTFrequencyEstimator:
 
         assert isinstance(f_est, float)
         assert 0 < f_est < signal.fs / 2
+
+    def test_estimate_full(self):
+        """Test DFT estimate_full (two-step: DFT for frequency, NLS for tau)."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=10000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+
+        estimator = DFTFrequencyEstimator(window="rect")
+        result = estimator.estimate_full(x, signal.fs)
+
+        assert isinstance(result, EstimationResult)
+        assert abs(result.f - signal.f0) < 0.1
+        # tau and Q may be None if NLS step fails, but if successful should be reasonable
+        if result.tau is not None:
+            assert result.tau > 0
+            assert result.Q is not None
+            assert result.Q > 0

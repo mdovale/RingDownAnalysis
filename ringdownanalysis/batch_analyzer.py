@@ -313,20 +313,23 @@ class BatchRingDownAnalyzer:
         """
         Calculate Q factors for all processed results.
 
-        Q = π * f * τ
+        Uses Q_nls from results if available (from estimate_full()), otherwise
+        calculates Q = π * f * τ for backward compatibility.
 
         Returns:
         --------
         List[float]
             Q factor for each result
         """
-        # Vectorized Q factor calculation
-        f_nls_all = np.array([r["f_nls"] for r in self.results], dtype=float)
-        tau_est_all = np.array([r["tau_est"] for r in self.results], dtype=float)
-        q_factors = (np.pi * f_nls_all * tau_est_all).tolist()
-
-        # Store Q factors in results
-        for r, q in zip(self.results, q_factors):
+        q_factors = []
+        for r in self.results:
+            # Use Q_nls if available (from streamlined estimate_full())
+            if "Q_nls" in r and r["Q_nls"] is not None:
+                q = r["Q_nls"]
+            else:
+                # Fallback: calculate from f_nls and tau_est (backward compatibility)
+                q = np.pi * r["f_nls"] * r["tau_est"]
+            q_factors.append(q)
             r["Q"] = q
 
         return q_factors

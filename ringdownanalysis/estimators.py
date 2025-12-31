@@ -4,13 +4,24 @@ Frequency estimation methods for ring-down signals.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import numpy as np
 from scipy.optimize import curve_fit, least_squares
 from scipy.signal.windows import kaiser
 
 logger = logging.getLogger(__name__)
+
+
+class EstimationResult(NamedTuple):
+    """Result of frequency, tau, and Q estimation."""
+
+    f: float
+    """Estimated frequency (Hz)"""
+    tau: Optional[float]
+    """Estimated decay time constant (s), or None if not estimated"""
+    Q: Optional[float]
+    """Estimated quality factor, or None if tau is not available"""
 
 
 class FrequencyEstimator(ABC):
@@ -385,6 +396,119 @@ class NLSFrequencyEstimator(FrequencyEstimator):
 
         return float(f_hat)
 
+    def estimate_full(self, x: np.ndarray, fs: float, **kwargs) -> EstimationResult:
+        """
+        Estimate frequency, tau, and Q using nonlinear least squares.
+
+        When tau_known is None, this method extracts both frequency and tau
+        from the joint NLS fit and computes Q = π f τ.
+
+        Parameters:
+        -----------
+        x : np.ndarray
+            Signal samples
+        fs : float
+            Sampling frequency (Hz)
+        **kwargs
+            Additional parameters:
+            - initial_params: Optional tuple of (f0_init, phi0_init, A0_init, c0) to avoid redundant FFT
+
+        Returns:
+        --------
+        EstimationResult
+            Named tuple with (f, tau, Q) estimates
+        """
+        N = len(x)
+        t = np.arange(N) / fs
+
+        # Get initial parameter estimates (use cached if provided)
+        initial_params = kwargs.get("initial_params")
+        if initial_params is not None:
+            f0_init, phi0_init, A0_init, c0 = initial_params
+        else:
+            f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
+
+        if self.tau_known is not None:
+            # Known tau: only estimate frequency, use known tau
+            f_hat = self.estimate(x, fs, **kwargs)
+            tau_hat = self.tau_known
+            Q_hat = np.pi * f_hat * tau_hat
+            return EstimationResult(f=f_hat, tau=tau_hat, Q=Q_hat)
+        else:
+            # Unknown tau: estimate (A0, f, phi, tau, c) and extract both
+            tau_init = _estimate_initial_tau_from_envelope(x, t)
+
+            def residuals(p):
+                A0, f, phi, tau, c = p
+                return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
+
+            df = fs / N
+            f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
+            f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
+
+            lb = [0.0, f_low, -np.pi, t[1], -np.inf]
+            ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t[-1], np.inf]
+
+            res = least_squares(
+                residuals,
+                x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
+                bounds=(lb, ub),
+                method="trf",
+                ftol=1e-8,
+                xtol=1e-8,
+                gtol=1e-8,
+                max_nfev=150,
+                verbose=0,
+            )
+
+            if not res.success:
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        "nls_full_estimation_failed",
+                        extra={
+                            "event": "nls_full_estimation_failed",
+                            "method": "nls_tau_unknown",
+                            "message": res.message,
+                            "nfev": res.nfev,
+                        },
+                    )
+                # Fallback: return frequency only
+                f_hat = f0_init
+                return EstimationResult(f=f_hat, tau=None, Q=None)
+
+            _, f_hat, _, tau_hat, _ = res.x
+
+            # Sanity checks
+            if f_hat < 0 or f_hat > 0.5 * fs or abs(f_hat - f0_init) > 0.5 * f0_init:
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        "nls_full_sanity_check_failed",
+                        extra={
+                            "event": "nls_full_sanity_check_failed",
+                            "f_hat": float(f_hat),
+                            "f0_init": float(f0_init),
+                            "fs": float(fs),
+                        },
+                    )
+                f_hat = f0_init
+                return EstimationResult(f=f_hat, tau=None, Q=None)
+
+            if tau_hat <= 0 or tau_hat > 10.0 * t[-1] or tau_hat < t[1]:
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        "nls_full_tau_sanity_check_failed",
+                        extra={
+                            "event": "nls_full_tau_sanity_check_failed",
+                            "tau_hat": float(tau_hat),
+                            "tau_init": float(tau_init),
+                            "t_max": float(t[-1]),
+                        },
+                    )
+                return EstimationResult(f=f_hat, tau=None, Q=None)
+
+            Q_hat = np.pi * f_hat * tau_hat
+            return EstimationResult(f=float(f_hat), tau=float(tau_hat), Q=float(Q_hat))
+
 
 class DFTFrequencyEstimator(FrequencyEstimator):
     """
@@ -503,3 +627,91 @@ class DFTFrequencyEstimator(FrequencyEstimator):
             )
 
         return float(f_hat)
+
+    def estimate_full(self, x: np.ndarray, fs: float, **kwargs) -> EstimationResult:
+        """
+        Estimate frequency, tau, and Q using a two-step approach:
+        1. Estimate frequency via DFT (as in estimate())
+        2. Estimate tau via NLS with frequency fixed to the DFT result
+
+        Parameters:
+        -----------
+        x : np.ndarray
+            Signal samples
+        fs : float
+            Sampling frequency (Hz)
+        **kwargs
+            Additional parameters (ignored)
+
+        Returns:
+        --------
+        EstimationResult
+            Named tuple with (f, tau, Q) estimates
+        """
+        # Step 1: Estimate frequency via DFT
+        f_hat = self.estimate(x, fs, **kwargs)
+
+        # Step 2: Estimate tau via NLS with fixed frequency
+        N = len(x)
+        t = np.arange(N) / fs
+
+        # Get initial parameter estimates for NLS
+        initial_params = kwargs.get("initial_params")
+        if initial_params is not None:
+            _, phi0_init, A0_init, c0 = initial_params
+        else:
+            _, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
+
+        # Initial tau guess
+        tau_init = _estimate_initial_tau_from_envelope(x, t)
+
+        # NLS fit with fixed frequency: estimate (A0, phi, tau, c)
+        def residuals(p):
+            A0, phi, tau, c = p
+            return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f_hat * t + phi) + c) - x
+
+        lb = [0.0, -np.pi, t[1], -np.inf]
+        ub = [10.0 * A0_init, np.pi, 10.0 * t[-1], np.inf]
+
+        res = least_squares(
+            residuals,
+            x0=np.array([A0_init, phi0_init, tau_init, c0]),
+            bounds=(lb, ub),
+            method="trf",
+            ftol=1e-8,
+            xtol=1e-8,
+            gtol=1e-8,
+            max_nfev=150,
+            verbose=0,
+        )
+
+        if not res.success:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "dft_full_tau_estimation_failed",
+                    extra={
+                        "event": "dft_full_tau_estimation_failed",
+                        "message": res.message,
+                        "nfev": res.nfev,
+                    },
+                )
+            return EstimationResult(f=f_hat, tau=None, Q=None)
+
+        _, _, tau_hat, _ = res.x
+
+        # Sanity check on tau
+        if tau_hat <= 0 or tau_hat > 10.0 * t[-1] or tau_hat < t[1]:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "dft_full_tau_sanity_check_failed",
+                    extra={
+                        "event": "dft_full_tau_sanity_check_failed",
+                        "tau_hat": float(tau_hat),
+                        "tau_init": float(tau_init),
+                        "t_max": float(t[-1]),
+                    },
+                )
+            return EstimationResult(f=f_hat, tau=None, Q=None)
+
+        Q_hat = np.pi * f_hat * tau_hat
+        return EstimationResult(f=float(f_hat), tau=float(tau_hat), Q=float(Q_hat))

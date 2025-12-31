@@ -13,6 +13,7 @@ from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
 from .estimators import (
     DFTFrequencyEstimator,
+    EstimationResult,
     NLSFrequencyEstimator,
     _estimate_initial_parameters_from_dft,
     _estimate_initial_tau_from_envelope,
@@ -368,9 +369,16 @@ class RingDownAnalyzer:
         # Compute initial parameters for cropped data once
         initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
 
-        # Estimate frequencies on cropped data
-        f_nls = self.nls_estimator.estimate(data_cropped, fs, initial_params=initial_params_cropped)
-        f_dft = self.dft_estimator.estimate(data_cropped, fs)
+        # Estimate frequencies, tau, and Q on cropped data
+        result_nls = self.nls_estimator.estimate_full(
+            data_cropped, fs, initial_params=initial_params_cropped
+        )
+        result_dft = self.dft_estimator.estimate_full(data_cropped, fs)
+
+        f_nls = result_nls.f
+        f_dft = result_dft.f
+        Q_nls = result_nls.Q
+        Q_dft = result_dft.Q
 
         # Estimate noise parameters (using cached initial params)
         A0_est, sigma_est = self.estimate_noise_parameters(
@@ -407,6 +415,8 @@ class RingDownAnalyzer:
             "tau_est": tau_est,
             "f_nls": f_nls,
             "f_dft": f_dft,
+            "Q_nls": Q_nls,
+            "Q_dft": Q_dft,
             "A0_est": A0_est,
             "sigma_est": sigma_est,
             "crlb_std_f": crlb_std_f,

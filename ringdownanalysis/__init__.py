@@ -15,7 +15,12 @@ from .analyzer import RingDownAnalyzer
 from .batch_analyzer import BatchRingDownAnalyzer
 from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
-from .estimators import DFTFrequencyEstimator, FrequencyEstimator, NLSFrequencyEstimator
+from .estimators import (
+    DFTFrequencyEstimator,
+    EstimationResult,
+    FrequencyEstimator,
+    NLSFrequencyEstimator,
+)
 from .monte_carlo import MonteCarloAnalyzer
 
 # Core classes
@@ -51,6 +56,7 @@ __all__ = [
     "FrequencyEstimator",
     "NLSFrequencyEstimator",
     "DFTFrequencyEstimator",
+    "EstimationResult",
     "CRLBCalculator",
     "RingDownDataLoader",
     "RingDownAnalyzer",

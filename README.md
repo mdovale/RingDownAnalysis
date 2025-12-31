@@ -67,6 +67,13 @@ f_dft = dft_estimator.estimate(x, signal.fs)
 print(f"True frequency: {signal.f0:.6f} Hz")
 print(f"NLS estimate:    {f_nls:.6f} Hz")
 print(f"DFT estimate:    {f_dft:.6f} Hz")
+
+# Or estimate frequency, tau, and Q together
+result_nls = nls_estimator.estimate_full(x, signal.fs)
+result_dft = dft_estimator.estimate_full(x, signal.fs)
+
+print(f"\nNLS full result: f={result_nls.f:.6f} Hz, tau={result_nls.tau:.2f} s, Q={result_nls.Q:.2e}")
+print(f"DFT full result: f={result_dft.f:.6f} Hz, tau={result_dft.tau:.2f} s, Q={result_dft.Q:.2e}")
 ```
 
 #### Analyze Experimental Data
@@ -126,7 +133,12 @@ The package provides a modern object-oriented API:
 - **`RingDownSignal`**: Generate synthetic ring-down signals with specified parameters
 - **`FrequencyEstimator`**: Base class for frequency estimation methods
   - **`NLSFrequencyEstimator`**: Nonlinear least squares estimation
+    - `estimate()`: Returns frequency only
+    - `estimate_full()`: Returns `EstimationResult` with frequency, tau, and Q
   - **`DFTFrequencyEstimator`**: DFT-based estimation with Lorentzian fitting
+    - `estimate()`: Returns frequency only
+    - `estimate_full()`: Returns `EstimationResult` with frequency, tau (via NLS with fixed frequency), and Q
+- **`EstimationResult`**: Named tuple containing (f, tau, Q) estimates
 - **`CRLBCalculator`**: Calculate Cramér-Rao Lower Bound for frequency estimation
 - **`RingDownAnalyzer`**: Analyze individual ring-down data files
 - **`BatchRingDownAnalyzer`**: Batch process multiple data files
@@ -203,8 +215,9 @@ batch_analyzer = BatchRingDownAnalyzer()
 # Process all files in data directory
 results = batch_analyzer.process_directory("data", verbose=True, n_jobs=-1)
 
-# Calculate Q factors
-batch_analyzer.calculate_q_factors()
+# Q factors are automatically calculated during analysis (via estimate_full())
+# Access them directly from results or use calculate_q_factors() for statistics
+batch_analyzer.calculate_q_factors()  # Ensures Q is in results dict
 q_stats = batch_analyzer.get_q_factor_statistics()
 
 # Get summary table
