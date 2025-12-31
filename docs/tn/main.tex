@@ -386,7 +386,11 @@ For each Monte Carlo trial, the script:
 \item Generates an independent realization with random noise and initial phase $\phi_0 \sim \mathcal{U}(-\pi, \pi)$.
 \item Calculates the CRLB from the explicit Fisher information matrix derivation for both frequency and quality factor $Q$.
 \item Estimates frequency using nonlinear least squares and windowed DFT peak fitting with Lorentzian function.
-\item Estimates quality factor $Q$ using NLS (by estimating both frequency and decay time $\tau$, then computing $Q = \pi f \tau$).
+\item Estimates quality factor $Q$ using both NLS and DFT+NLS hybrid methods:
+  \begin{itemize}
+  \item \textbf{NLS}: Jointly estimates frequency and decay time, then computes $Q = \pi f \tau$.
+  \item \textbf{DFT+NLS hybrid}: Two-step approach: (1) estimates frequency via DFT peak fitting with Lorentzian function, (2) estimates decay time via NLS with frequency fixed to the DFT result, then (3) computes $Q = \pi f \tau$.
+  \end{itemize}
 \item Computes error statistics: mean bias, standard deviation, and root-mean-square error for both frequency and $Q$ estimates.
 \end{enumerate}
 
@@ -415,19 +419,32 @@ The script produces figures comparing the performance of the estimation methods 
 
 \subsection{Quality factor estimation}
 
-The quality factor $Q$ is estimated from the NLS method by jointly estimating frequency $f$ and decay time $\tau$, then computing $Q = \pi f \tau$. The CRLB for $Q$ estimation is calculated from the explicit Fisher information matrix derivation in Sec.~\ref{sec:crlb-scaling}, accounting for the covariance between frequency and decay time estimates (see Eq.~\eqref{eq:crlb-Q-final}).
+The quality factor $Q$ is estimated using two complementary approaches, mirroring the frequency estimation methods:
+
+\begin{itemize}
+\item \textbf{NLS method}: Jointly estimates frequency $f$ and decay time $\tau$ using nonlinear least squares, then computes $Q = \pi f \tau$. This approach leverages the explicit ring-down model and provides statistically efficient estimates.
+\item \textbf{DFT+NLS hybrid method}: Uses a two-step hybrid approach:
+  \begin{enumerate}
+  \item \textbf{Step 1}: Estimate frequency $f$ via DFT peak fitting with Lorentzian function (as described in Sec.~\ref{sec:dft}).
+  \item \textbf{Step 2}: Estimate decay time $\tau$ using NLS with the frequency fixed to the DFT result from Step 1.
+  \item \textbf{Step 3}: Compute $Q = \pi f \tau$ using the DFT frequency and NLS decay time estimates.
+  \end{enumerate}
+  This hybrid approach combines the computational efficiency of DFT frequency estimation with the accuracy of NLS decay time estimation, providing a practical alternative to pure NLS for Q estimation.
+\end{itemize}
+
+The CRLB for $Q$ estimation is calculated from the explicit Fisher information matrix derivation in Sec.~\ref{sec:crlb-scaling}, accounting for the covariance between frequency and decay time estimates (see Eq.~\eqref{eq:crlb-Q-final}).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics{q_estimation_ringdown_v6_individual.pdf}
-\caption{Error distribution for NLS quality factor ($Q$) estimation method applied to ring-down signals. The histogram shows the distribution of $Q$ estimation errors from 100 Monte Carlo trials. The vertical dashed lines indicate the CRLB standard deviation calculated from the explicit Fisher information matrix. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples ($T = \SI{10000}{s}$), initial $\text{SNR} = \SI{60}{dB}$, quality factor $Q = 10^4$ (decay time $\tau = \SI{636.6}{s}$). The NLS method achieves standard deviations close to the Q-CRLB, demonstrating efficient estimation of the quality factor.}
+\caption{Error distributions for NLS and DFT+NLS hybrid quality factor ($Q$) estimation methods applied to ring-down signals. Each panel shows the histogram of $Q$ estimation errors from 100 Monte Carlo trials. The vertical dashed lines indicate the CRLB standard deviation calculated from the explicit Fisher information matrix. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples ($T = \SI{10000}{s}$), initial $\text{SNR} = \SI{60}{dB}$, quality factor $Q = 10^4$ (decay time $\tau = \SI{636.6}{s}$). The NLS method (top) achieves standard deviations close to the Q-CRLB, demonstrating efficient estimation of the quality factor through joint estimation of frequency and decay time. The DFT+NLS hybrid method (bottom) uses a two-step approach: (1) DFT frequency estimation via Lorentzian peak fitting, (2) NLS decay time estimation with frequency fixed to the DFT result, then (3) computes $Q = \pi f \tau$. This hybrid approach combines the computational efficiency of DFT frequency estimation with the accuracy of NLS decay time estimation, providing a practical alternative that achieves reasonable accuracy.}
 \label{fig:q-individual-v6}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics{q_estimation_ringdown_v6_performance.pdf}
-\caption{Performance metrics for quality factor ($Q$) estimation. Left panel: Standard deviation of $Q$ estimation errors for the NLS method, plotted on a logarithmic scale. The horizontal dashed line indicates the Q-CRLB. Right panel: Statistical efficiency $\eta = \sigma_{\text{CRLB}}/\sigma_{\text{method}}$, where $\eta = 1$ corresponds to achieving the CRLB. The NLS method achieves efficiency near unity for $Q$ estimation, demonstrating that the joint estimation of frequency and decay time provides statistically efficient quality factor estimates.}
+\caption{Performance metrics comparison for quality factor ($Q$) estimation. Left panel: Standard deviation of $Q$ estimation errors for NLS and DFT+NLS hybrid methods, plotted on a logarithmic scale. The horizontal dashed line indicates the Q-CRLB. Right panel: Statistical efficiency $\eta = \sigma_{\text{CRLB}}/\sigma_{\text{method}}$, where $\eta = 1$ corresponds to achieving the CRLB. The NLS method achieves efficiency near unity for $Q$ estimation, demonstrating that the joint estimation of frequency and decay time provides statistically efficient quality factor estimates. The DFT+NLS hybrid method, while less efficient than NLS, provides a computationally efficient alternative that leverages the speed of DFT frequency estimation (Step 1) combined with NLS decay time estimation (Step 2) to compute $Q = \pi f \tau$ (Step 3).}
 \label{fig:q-performance-v6}
 \end{figure}
 

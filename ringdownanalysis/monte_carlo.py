@@ -121,7 +121,7 @@ def _process_single_trial(args):
     Returns:
     --------
     tuple
-        (trial_idx, error_nls, error_dft, error_q_nls, success_flags)
+        (trial_idx, error_nls, error_dft, error_q_nls, error_q_dft, success_flags)
     """
     trial_idx, signal_params, nls_estimator, dft_estimator, base_seed = args
 
@@ -145,13 +145,14 @@ def _process_single_trial(args):
                     "error_msg": str(e),
                 },
             )
-        return (trial_idx, None, None, None, {"generate": False, "error": str(e)})
+        return (trial_idx, None, None, None, None, {"generate": False, "error": str(e)})
 
     errors = {}
     results = {"nls": None, "dft": None}
 
     # Estimate frequency, tau, and Q using estimate_full() for streamlined Q estimation
     error_q_nls = None
+    error_q_dft = None
     try:
         result_nls = nls_estimator.estimate_full(x, signal.fs)
         errors["nls"] = result_nls.f - signal.f0
@@ -176,6 +177,9 @@ def _process_single_trial(args):
         result_dft = dft_estimator.estimate_full(x, signal.fs)
         errors["dft"] = result_dft.f - signal.f0
         results["dft"] = True
+        # Extract Q error if available
+        if result_dft.Q is not None:
+            error_q_dft = result_dft.Q - signal.Q
     except Exception as e:
         errors["dft"] = None
         results["dft"] = False
@@ -189,7 +193,7 @@ def _process_single_trial(args):
                 },
             )
 
-    return (trial_idx, errors["nls"], errors["dft"], error_q_nls, results)
+    return (trial_idx, errors["nls"], errors["dft"], error_q_nls, error_q_dft, results)
 
 
 class MonteCarloAnalyzer:
@@ -269,6 +273,7 @@ class MonteCarloAnalyzer:
             - 'errors_nls': frequency errors for NLS method
             - 'errors_dft': frequency errors for DFT method
             - 'errors_q_nls': Q errors for NLS method
+            - 'errors_q_dft': Q errors for DFT method
             - 'stats': statistics for each method
         """
         # Create signal to compute derived parameters
@@ -338,8 +343,8 @@ class MonteCarloAnalyzer:
         ]
 
         # Storage for errors
-        errors_dict = {i: {"nls": None, "dft": None, "q_nls": None} for i in range(n_mc)}
-        failure_counts = {"nls": 0, "dft": 0, "q_nls": 0}
+        errors_dict = {i: {"nls": None, "dft": None, "q_nls": None, "q_dft": None} for i in range(n_mc)}
+        failure_counts = {"nls": 0, "dft": 0, "q_nls": 0, "q_dft": 0}
 
         # Process trials with or without parallelization
         if use_parallel:
@@ -352,13 +357,14 @@ class MonteCarloAnalyzer:
                 with tqdm(total=n_mc, desc="Monte Carlo trials", unit="trial") as pbar:
                     for future in as_completed(futures):
                         try:
-                            trial_idx, err_nls, err_dft, err_q_nls, success = future.result(
+                            trial_idx, err_nls, err_dft, err_q_nls, err_q_dft, success = future.result(
                                 timeout=timeout_per_trial
                             )
                             errors_dict[trial_idx] = {
                                 "nls": err_nls,
                                 "dft": err_dft,
                                 "q_nls": err_q_nls,
+                                "q_dft": err_q_dft,
                             }
 
                             if err_nls is None:
@@ -367,6 +373,8 @@ class MonteCarloAnalyzer:
                                 failure_counts["dft"] += 1
                             if err_q_nls is None:
                                 failure_counts["q_nls"] += 1
+                            if err_q_dft is None:
+                                failure_counts["q_dft"] += 1
                         except FutureTimeoutError:
                             timeout_count += 1
                             trial_idx = futures[future]
@@ -381,10 +389,11 @@ class MonteCarloAnalyzer:
                             print(
                                 f"\n  Warning: Trial {trial_idx} timed out after {timeout_per_trial}s"
                             )
-                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None}
+                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None, "q_dft": None}
                             failure_counts["nls"] += 1
                             failure_counts["dft"] += 1
                             failure_counts["q_nls"] += 1
+                            failure_counts["q_dft"] += 1
                         except Exception as e:
                             trial_idx = futures[future]
                             logger.error(
@@ -398,10 +407,11 @@ class MonteCarloAnalyzer:
                                 exc_info=True,
                             )
                             print(f"\n  Warning: Trial {trial_idx} failed with error: {e}")
-                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None}
+                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None, "q_dft": None}
                             failure_counts["nls"] += 1
                             failure_counts["dft"] += 1
                             failure_counts["q_nls"] += 1
+                            failure_counts["q_dft"] += 1
 
                         pbar.update(1)
 
@@ -422,11 +432,12 @@ class MonteCarloAnalyzer:
                 iterator = trial_args
 
             for args in iterator:
-                trial_idx, err_nls, err_dft, err_q_nls, success = _process_single_trial(args)
+                trial_idx, err_nls, err_dft, err_q_nls, err_q_dft, success = _process_single_trial(args)
                 errors_dict[trial_idx] = {
                     "nls": err_nls,
                     "dft": err_dft,
                     "q_nls": err_q_nls,
+                    "q_dft": err_q_dft,
                 }
 
                 if err_nls is None:
@@ -435,6 +446,8 @@ class MonteCarloAnalyzer:
                     failure_counts["dft"] += 1
                 if err_q_nls is None:
                     failure_counts["q_nls"] += 1
+                if err_q_dft is None:
+                    failure_counts["q_dft"] += 1
 
                 if not HAS_TQDM and (trial_idx + 1) % 20 == 0:
                     print(f"  Completed {trial_idx + 1}/{n_mc} trials...")
@@ -449,10 +462,14 @@ class MonteCarloAnalyzer:
         errors_q_nls = [
             errors_dict[i]["q_nls"] for i in range(n_mc) if errors_dict[i]["q_nls"] is not None
         ]
+        errors_q_dft = [
+            errors_dict[i]["q_dft"] for i in range(n_mc) if errors_dict[i]["q_dft"] is not None
+        ]
 
         errors_nls = np.array(errors_nls)
         errors_dft = np.array(errors_dft)
         errors_q_nls = np.array(errors_q_nls)
+        errors_q_dft = np.array(errors_q_dft)
 
         # Report failures
         if any(failure_counts.values()):
@@ -486,6 +503,11 @@ class MonteCarloAnalyzer:
                 "mean": np.mean(errors_q_nls) if len(errors_q_nls) > 0 else np.nan,
                 "std": np.std(errors_q_nls, ddof=1) if len(errors_q_nls) > 0 else np.nan,
                 "rmse": np.sqrt(np.mean(errors_q_nls**2)) if len(errors_q_nls) > 0 else np.nan,
+            },
+            "q_dft": {
+                "mean": np.mean(errors_q_dft) if len(errors_q_dft) > 0 else np.nan,
+                "std": np.std(errors_q_dft, ddof=1) if len(errors_q_dft) > 0 else np.nan,
+                "rmse": np.sqrt(np.mean(errors_q_dft**2)) if len(errors_q_dft) > 0 else np.nan,
             },
         }
 
@@ -524,6 +546,9 @@ class MonteCarloAnalyzer:
         print(f"  CRLB: std={crlb_std:.6e} Hz")
         if len(errors_q_nls) > 0:
             print(f"  NLS Q: std={stats['q_nls']['std']:.6e}, bias={stats['q_nls']['mean']:.6e}")
+        if len(errors_q_dft) > 0:
+            print(f"  DFT Q: std={stats['q_dft']['std']:.6e}, bias={stats['q_dft']['mean']:.6e}")
+        if len(errors_q_nls) > 0 or len(errors_q_dft) > 0:
             print(f"  CRLB Q: std={crlb_std_q:.6e}")
 
         return {
@@ -538,5 +563,6 @@ class MonteCarloAnalyzer:
             "errors_nls": errors_nls,
             "errors_dft": errors_dft,
             "errors_q_nls": errors_q_nls,
+            "errors_q_dft": errors_q_dft,
             "stats": stats,
         }

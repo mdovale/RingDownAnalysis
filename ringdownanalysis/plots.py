@@ -299,13 +299,16 @@ def plot_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, 
 
 
 def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *args, **kwargs):
-    """Plot Q error distributions for NLS method."""
-    if "errors_q_nls" not in results or len(results["errors_q_nls"]) == 0:
+    """Plot Q error distributions for NLS and DFT methods."""
+    has_q_nls = "errors_q_nls" in results and len(results["errors_q_nls"]) > 0
+    has_q_dft = "errors_q_dft" in results and len(results["errors_q_dft"]) > 0
+    
+    if not has_q_nls and not has_q_dft:
         # Return empty axes if no Q data
         if ax is None:
             if figsize is None:
-                figsize = (6.5, 3)
-            fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
+                figsize = (6.5, 4.66)
+            fig, ax = plt.subplots(2, 1, figsize=figsize, dpi=dpi)
             plt.tight_layout()
         else:
             fig = ax.figure
@@ -320,48 +323,87 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
         ax.set_title("Q Estimation Error Distribution")
         return ax
 
-    errors_q_nls = results["errors_q_nls"]
+    errors_q_nls = results.get("errors_q_nls", [])
+    errors_q_dft = results.get("errors_q_dft", [])
     crlb_std_q = results.get("crlb_std_q")
 
     created_fig = False
     if ax is None:
         if figsize is None:
-            figsize = (6.5, 3)
-        fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
+            figsize = (6.5, 4.66)
+        fig, axes = plt.subplots(2, 1, figsize=figsize, dpi=dpi)
         created_fig = True
     else:
-        fig = ax.figure
+        if not isinstance(ax, np.ndarray) or ax.size != 2:
+            raise ValueError("ax must be an array of 2 axes for this plot")
+        axes = ax
+        fig = axes[0].figure
 
-    ax.hist(
-        errors_q_nls,
-        bins=30,
-        density=True,
-        color="blue",
-        alpha=0.6,
-        edgecolor="black",
-        *args,
-        **kwargs,
-    )
-    ax.axvline(0, color="tomato", linestyle="--", label="Zero error")
-    if crlb_std_q is not None and np.isfinite(crlb_std_q):
-        ax.axvline(crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
-        ax.axvline(-crlb_std_q, color="lime", linestyle="--")
-    ax.set_xlabel("Q error")
-    ax.set_ylabel("Probability density")
-    ax.set_title(
-        f"Nonlinear Least Squares (NLS) Q Estimation\nstd = {results['stats']['q_nls']['std']:.6e}"
-    )
-    apply_legend(ax)
-    ax.grid(True, alpha=0.3)
+    # NLS Q estimation
+    if has_q_nls:
+        ax_plot = axes[0]
+        ax_plot.hist(
+            errors_q_nls,
+            bins=30,
+            density=True,
+            color="blue",
+            alpha=0.6,
+            edgecolor="black",
+            *args,
+            **kwargs,
+        )
+        ax_plot.axvline(0, color="tomato", linestyle="--", label="Zero error")
+        if crlb_std_q is not None and np.isfinite(crlb_std_q):
+            ax_plot.axvline(crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
+            ax_plot.axvline(-crlb_std_q, color="lime", linestyle="--")
+        ax_plot.set_xlabel("Q error")
+        ax_plot.set_ylabel("Probability density")
+        ax_plot.set_title(
+            f"Nonlinear Least Squares (NLS) Q Estimation\nstd = {results['stats']['q_nls']['std']:.6e}"
+        )
+        apply_legend(ax_plot)
+        ax_plot.grid(True, alpha=0.3)
+    else:
+        axes[0].axis("off")
+
+    # DFT Q estimation
+    if has_q_dft:
+        ax_plot = axes[1]
+        ax_plot.hist(
+            errors_q_dft,
+            bins=30,
+            density=True,
+            color="blue",
+            alpha=0.6,
+            edgecolor="black",
+            *args,
+            **kwargs,
+        )
+        ax_plot.axvline(0, color="tomato", linestyle="--", label="Zero error")
+        if crlb_std_q is not None and np.isfinite(crlb_std_q):
+            ax_plot.axvline(crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
+            ax_plot.axvline(-crlb_std_q, color="lime", linestyle="--")
+        ax_plot.set_xlabel("Q error")
+        ax_plot.set_ylabel("Probability density")
+        ax_plot.set_title(
+            f"DFT+NLS Sequential Q Estimation\n(DFT frequency + NLS decay time)\nstd = {results['stats']['q_dft']['std']:.6e}"
+        )
+        apply_legend(ax_plot)
+        ax_plot.grid(True, alpha=0.3)
+    else:
+        axes[1].axis("off")
 
     if created_fig:
         plt.tight_layout()
-    return ax
+    return axes
 
 
 def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None, *args, **kwargs):
-    """Plot Q performance metrics comparison."""
-    if "errors_q_nls" not in results or len(results["errors_q_nls"]) == 0:
+    """Plot Q performance metrics comparison for NLS and DFT methods."""
+    has_q_nls = "errors_q_nls" in results and len(results["errors_q_nls"]) > 0
+    has_q_dft = "errors_q_dft" in results and len(results["errors_q_dft"]) > 0
+    
+    if not has_q_nls and not has_q_dft:
         # Return empty axes if no Q data
         if ax is None:
             if figsize is None:
@@ -399,9 +441,20 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
         ax.set_title("Q Estimation Performance")
         return ax
 
-    methods = ["NLS"]
-    stds = [stats["q_nls"]["std"]]
-    efficiencies = [crlb_std_q / stats["q_nls"]["std"]] if stats["q_nls"]["std"] > 0 else [0.0]
+    # Build methods list based on available data
+    methods = []
+    stds = []
+    efficiencies = []
+    
+    if has_q_nls:
+        methods.append("NLS")
+        stds.append(stats["q_nls"]["std"])
+        efficiencies.append(crlb_std_q / stats["q_nls"]["std"] if stats["q_nls"]["std"] > 0 else 0.0)
+    
+    if has_q_dft:
+        methods.append("DFT+NLS")
+        stds.append(stats["q_dft"]["std"])
+        efficiencies.append(crlb_std_q / stats["q_dft"]["std"] if stats["q_dft"]["std"] > 0 else 0.0)
 
     if ax is None:
         if figsize is None:
@@ -417,7 +470,8 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     # Standard deviation comparison
     ax_plot = axes[0]
     x_pos = np.arange(len(methods))
-    bars = ax_plot.bar(x_pos, stds, alpha=0.7, edgecolor="black", *args, **kwargs)
+    colors = ["blue", "tomato"][:len(methods)]
+    bars = ax_plot.bar(x_pos, stds, alpha=0.7, edgecolor="black", color=colors, *args, **kwargs)
     ax_plot.axhline(
         crlb_std_q, color="lime", linestyle="--", linewidth=2, label=f"CRLB = {crlb_std_q:.2e}"
     )
@@ -431,7 +485,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
 
     # Efficiency comparison
     ax_plot = axes[1]
-    bars = ax_plot.bar(x_pos, efficiencies, alpha=0.7, edgecolor="black", *args, **kwargs)
+    bars = ax_plot.bar(x_pos, efficiencies, alpha=0.7, edgecolor="black", color=colors, *args, **kwargs)
     ax_plot.axhline(1.0, color="tomato", linestyle="--", linewidth=2, label="CRLB (efficiency = 1)")
     ax_plot.set_xticks(x_pos)
     ax_plot.set_xticklabels(methods)

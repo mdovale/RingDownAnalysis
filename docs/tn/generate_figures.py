@@ -473,9 +473,11 @@ def generate_monte_carlo_figures(output_dir):
     # Generate and save Q estimation figures
     print()
     print("Generating Q estimation figures...")
-    if "errors_q_nls" in results and len(results["errors_q_nls"]) > 0:
+    has_q_nls = "errors_q_nls" in results and len(results["errors_q_nls"]) > 0
+    has_q_dft = "errors_q_dft" in results and len(results["errors_q_dft"]) > 0
+    if has_q_nls or has_q_dft:
         axes4 = plot_q_individual_results(results)
-        fig4 = axes4.figure  # Single axis
+        fig4 = axes4[0].figure if isinstance(axes4, np.ndarray) else axes4.figure
         fig4_path = output_dir / "q_estimation_ringdown_v6_individual.pdf"
         fig4.savefig(fig4_path, bbox_inches="tight")
         print(f"  Saved: {fig4_path}")
