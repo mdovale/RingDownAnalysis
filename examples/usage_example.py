@@ -288,15 +288,15 @@ def example_generate_latex_figures():
 
 if __name__ == "__main__":
     # Run all examples
-    # example_signal_generation()
-    # example_frequency_estimation()
-    # example_crlb()
-    # example_monte_carlo()
-    # example_data_analysis()
+    example_signal_generation()
+    example_frequency_estimation()
+    example_crlb()
+    example_monte_carlo()
+    example_data_analysis()
 
     # Generate LaTeX figures (can be run separately if needed)
     # Uncomment the line below to generate figures for the LaTeX document
-    example_generate_latex_figures()
+    # example_generate_latex_figures()
 
     print("=" * 70)
     print("All examples completed!")
