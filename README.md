@@ -1,4 +1,4 @@
-# Frequency and Quality Factor Estimation of Ring-Down Signals
+# Frequency and Quality Factor Estimation of Exponentially Decaying Sinusoids
 
 This repository contains theoretical analysis, numerical simulations, and experimental data analysis for frequency estimation of ring-down signals. Ring-down signals are exponentially decaying sinusoids that arise from measurements of harmonic oscillators with quality factor Q, where the amplitude decays exponentially due to energy dissipation.
 
