@@ -345,6 +345,34 @@ pytest benchmarks/benchmark_suite.py --benchmark-only
 
 See `benchmarks/README.md` for detailed information on benchmarking and profiling workflows.
 
+## Development
+
+### CI/CD
+
+GitHub Actions run on every push and pull request:
+
+- **Lint**: Ruff check and format
+- **Test**: pytest with coverage on Python 3.8, 3.11, 3.12
+- **Typecheck**: mypy
+
+Coverage is uploaded to [Codecov](https://codecov.io) (optional; add `CODECOV_TOKEN` secret for private repos).
+
+### Releasing
+
+To publish a new version to PyPI:
+
+1. Update `version` in `pyproject.toml`
+2. Create and push a tag:
+
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+3. The release workflow builds and publishes to PyPI automatically.
+
+**Setup**: Add `PYPI_API_TOKEN` as a repository secret (Settings → Secrets → Actions). Create a token at [pypi.org/manage/account/token/](https://pypi.org/manage/account/token/).
+
 ## References
 
 - S. M. Kay, *Fundamentals of Statistical Signal Processing: Estimation Theory*. Prentice Hall, 1993.

@@ -57,6 +57,7 @@ venv.bak/
 # Testing and coverage
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 .tox/
 .nox/
