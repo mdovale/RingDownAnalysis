@@ -9,6 +9,8 @@ Frequency Estimation Analysis for Ring-Down Signals: NLS and Optimized DFT Metho
     :class:`MonteCarloAnalyzer`, :class:`RingDownSignal`, and estimator classes.
 """
 
+from __future__ import annotations
+
 import warnings
 
 warnings.warn(

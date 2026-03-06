@@ -5,6 +5,8 @@ This module provides consistent matplotlib styling across all plots in the codeb
 as well as plotting functions for visualizing Monte Carlo analysis results.
 """
 
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 import numpy as np
 
