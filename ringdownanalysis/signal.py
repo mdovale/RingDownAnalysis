@@ -4,8 +4,6 @@ Ring-down signal generation and parameter management.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 
@@ -105,8 +103,8 @@ class RingDownSignal:
 
     def generate(
         self,
-        phi0: Optional[float] = None,
-        rng: Optional[np.random.Generator] = None,
+        phi0: float | None = None,
+        rng: np.random.Generator | None = None,
     ) -> tuple[np.ndarray, np.ndarray, float]:
         """
         Generate a noisy ring-down signal.
@@ -145,10 +143,10 @@ class RingDownSignal:
         self._x = x
         return t, x, phi0
 
-    def get_signal(self) -> Optional[np.ndarray]:
+    def get_signal(self) -> np.ndarray | None:
         """Get the generated signal if available."""
         return self._x
 
-    def get_phase(self) -> Optional[float]:
+    def get_phase(self) -> float | None:
         """Get the initial phase if signal was generated."""
         return self._phi0

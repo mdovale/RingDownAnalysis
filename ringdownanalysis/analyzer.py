@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -38,8 +37,8 @@ class RingDownAnalyzer:
 
     def __init__(
         self,
-        nls_estimator: Optional[NLSFrequencyEstimator] = None,
-        dft_estimator: Optional[DFTFrequencyEstimator] = None,
+        nls_estimator: NLSFrequencyEstimator | None = None,
+        dft_estimator: DFTFrequencyEstimator | None = None,
     ):
         """
         Initialize analyzer.
@@ -60,7 +59,7 @@ class RingDownAnalyzer:
         data: np.ndarray,
         t: np.ndarray,
         fs: float,
-        initial_params: Optional[tuple] = None,
+        initial_params: tuple | None = None,
     ) -> float:
         """
         Estimate tau from full data using NLS fit.
@@ -228,7 +227,7 @@ class RingDownAnalyzer:
         t_crop: np.ndarray,
         tau_est: float,
         fs: float,
-        initial_params: Optional[tuple] = None,
+        initial_params: tuple | None = None,
     ) -> tuple[float, float]:
         """
         Estimate A0 (initial amplitude) and sigma (noise std) from cropped data.
@@ -318,7 +317,7 @@ class RingDownAnalyzer:
 
         return A0_est, sigma_est
 
-    def analyze_file(self, filepath: str, max_tau_multiplier: float = 1.0) -> Dict:
+    def analyze_file(self, filepath: str, max_tau_multiplier: float = 1.0) -> dict:
         """
         Process a single data file and return analysis results.
 
