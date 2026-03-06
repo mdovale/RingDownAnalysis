@@ -10,14 +10,61 @@ import glob
 import logging
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
 from .analyzer import RingDownAnalyzer
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ProcessResult:
+    """
+    Result of batch file processing with both successes and failures.
+
+    Provides list-like access to successful results for backward compatibility
+    while exposing failed files for observability.
+
+    Attributes:
+    -----------
+    results : List[Dict]
+        Successfully processed results (same as RingDownAnalyzer.analyze_file output)
+    failed_files : List[Tuple[str, BaseException]]
+        List of (filepath, exception) for files that failed to process
+    """
+
+    results: List[Dict]
+    failed_files: List[Tuple[str, BaseException]]
+
+    def __len__(self) -> int:
+        """Return number of successful results."""
+        return len(self.results)
+
+    def __iter__(self):
+        """Iterate over successful results."""
+        return iter(self.results)
+
+    def __getitem__(self, index):
+        """Index into successful results."""
+        return self.results[index]
+
+    @property
+    def successes(self) -> List[Dict]:
+        """Alias for results (successful analyses)."""
+        return self.results
+
+    @property
+    def failures(self) -> List[Tuple[str, BaseException]]:
+        """Alias for failed_files."""
+        return self.failed_files
+
+    def has_failures(self) -> bool:
+        """Return True if any files failed to process."""
+        return len(self.failed_files) > 0
 
 
 def _process_single_file(filepath: str) -> Dict:
@@ -72,7 +119,7 @@ class BatchRingDownAnalyzer:
         filepaths: List[str],
         verbose: bool = True,
         n_jobs: Optional[int] = None,
-    ) -> List[Dict]:
+    ) -> ProcessResult:
         """
         Process multiple data files and store results.
 
@@ -89,13 +136,16 @@ class BatchRingDownAnalyzer:
 
         Returns:
         --------
-        List[Dict]
-            List of result dictionaries (same as RingDownAnalyzer.analyze_file)
+        ProcessResult
+            Object with `.results` (successful analyses), `.failed_files` (list of
+            (filepath, exception) for failures). List-like for backward compatibility:
+            len(), iteration, and indexing work on successful results.
         """
         self.results = []
+        failed_files: List[Tuple[str, BaseException]] = []
 
         if not filepaths:
-            return self.results
+            return ProcessResult(results=[], failed_files=[])
 
         # Determine number of workers
         if n_jobs is None or n_jobs == 1:
@@ -131,6 +181,7 @@ class BatchRingDownAnalyzer:
                         print(f"  Difference: {abs(result['f_nls'] - result['f_dft']):.6e} Hz")
                         print(f"  CRLB std: {result['crlb_std_f']:.6e} Hz")
                 except Exception as e:
+                    failed_files.append((str(filepath), e))
                     logger.error(
                         "file_processing_error",
                         extra={
@@ -146,6 +197,33 @@ class BatchRingDownAnalyzer:
                         import traceback
 
                         traceback.print_exc()
+
+            if failed_files:
+                logger.warning(
+                    "batch_processing_errors",
+                    extra={
+                        "event": "batch_processing_errors",
+                        "n_errors": len(failed_files),
+                        "n_total": len(filepaths),
+                    },
+                )
+                if verbose:
+                    print(f"\n{len(failed_files)} file(s) failed to process")
+
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    "batch_processing_complete",
+                    extra={
+                        "event": "batch_processing_complete",
+                        "n_successful": len(self.results),
+                        "n_failed": len(failed_files),
+                        "n_total": len(filepaths),
+                    },
+                )
+            if verbose:
+                print(f"\nSuccessfully processed {len(self.results)} files")
+
+            return ProcessResult(results=self.results, failed_files=failed_files)
         else:
             # Parallel processing
             if n_jobs == -1:
@@ -168,7 +246,6 @@ class BatchRingDownAnalyzer:
             # Create a dictionary to map results back to original order
             filepath_to_index = {fp: i for i, fp in enumerate(filepaths)}
             results_dict = {}
-            errors = []
 
             with ProcessPoolExecutor(max_workers=n_jobs) as executor:
                 # Submit all tasks
@@ -212,7 +289,7 @@ class BatchRingDownAnalyzer:
                             print(f"  Difference: {abs(result['f_nls'] - result['f_dft']):.6e} Hz")
                             print(f"  CRLB std: {result['crlb_std_f']:.6e} Hz")
                     except Exception as e:
-                        errors.append((filepath, e))
+                        failed_files.append((str(filepath), e))
                         logger.error(
                             "file_processing_error",
                             extra={
@@ -232,32 +309,32 @@ class BatchRingDownAnalyzer:
             # Reconstruct results in original order
             self.results = [results_dict[i] for i in sorted(results_dict.keys())]
 
-            if errors:
+            if failed_files:
                 logger.warning(
                     "batch_processing_errors",
                     extra={
                         "event": "batch_processing_errors",
-                        "n_errors": len(errors),
+                        "n_errors": len(failed_files),
                         "n_total": len(filepaths),
                     },
                 )
                 if verbose:
-                    print(f"\n{len(errors)} file(s) failed to process")
+                    print(f"\n{len(failed_files)} file(s) failed to process")
 
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(
-                "batch_processing_complete",
-                extra={
-                    "event": "batch_processing_complete",
-                    "n_successful": len(self.results),
-                    "n_total": len(filepaths),
-                },
-            )
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    "batch_processing_complete",
+                    extra={
+                        "event": "batch_processing_complete",
+                        "n_successful": len(self.results),
+                        "n_failed": len(failed_files),
+                        "n_total": len(filepaths),
+                    },
+                )
+            if verbose:
+                print(f"\nSuccessfully processed {len(self.results)} files")
 
-        if verbose:
-            print(f"\nSuccessfully processed {len(self.results)} files")
-
-        return self.results
+            return ProcessResult(results=self.results, failed_files=failed_files)
 
     def process_directory(
         self,
@@ -284,8 +361,9 @@ class BatchRingDownAnalyzer:
 
         Returns:
         --------
-        List[Dict]
-            List of result dictionaries
+        ProcessResult
+            Object with `.results` (successful analyses) and `.failed_files`
+            (filepath, exception) for failures. See process_files() for details.
 
         Raises:
         -------

@@ -98,19 +98,26 @@ See `examples/usage_example.py` and `examples/batch_analysis_example.py` for mor
 
 #### Configure Logging
 
-The package includes comprehensive logging support. Configure logging for production use or debugging:
+The package uses `NullHandler` by default (no log output). For easier debugging, enable console logging:
+
+```python
+import logging
+from ringdownanalysis import configure_logging, BatchRingDownAnalyzer
+
+# Quick setup: INFO-level console output
+configure_logging(level=logging.INFO)
+
+analyzer = BatchRingDownAnalyzer()
+results = analyzer.process_directory("data")
+```
+
+For production (file + console, rotation, structured format):
 
 ```python
 from examples.logging_config_example import setup_production_logging
 import logging
 
-# Set up production logging (file + console)
 setup_production_logging(log_dir='logs', log_level=logging.INFO)
-
-# Now use the package - logs will be written to files
-from ringdownanalysis import BatchRingDownAnalyzer
-analyzer = BatchRingDownAnalyzer()
-results = analyzer.process_directory("data")
 ```
 
 See `examples/logging_config_example.py` for more logging configuration options.

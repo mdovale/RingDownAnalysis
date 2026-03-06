@@ -23,10 +23,15 @@ def main():
         print("Processing files in data directory...")
         # Use all available CPU cores for parallel processing
         # Set n_jobs=1 for sequential processing, or specify a number
-        results = batch_analyzer.process_directory(str(data_dir), verbose=True, n_jobs=-1)
+        result = batch_analyzer.process_directory(str(data_dir), verbose=True, n_jobs=-1)
 
-        if len(results) == 0:
-            print("No data files found. Skipping analysis.")
+        if result.has_failures():
+            print(f"\nFailed to process {len(result.failed_files)} file(s):")
+            for filepath, exc in result.failed_files:
+                print(f"  - {filepath}: {exc}")
+
+        if len(result) == 0:
+            print("No data files found or all failed. Skipping analysis.")
             return
 
         # Calculate Q factors

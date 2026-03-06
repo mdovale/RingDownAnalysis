@@ -333,6 +333,14 @@ class RingDownAnalyzer:
         --------
         dict
             Results dictionary with all analysis data
+
+        Raises:
+        -------
+        FileNotFoundError
+            If the file does not exist
+        ValueError
+            If the file format is unsupported, data is invalid (e.g., empty CSV,
+            malformed MAT structure), or file exceeds size limit
         """
         if logger.isEnabledFor(logging.INFO):
             logger.info(

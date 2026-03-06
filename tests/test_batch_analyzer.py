@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from ringdownanalysis.analyzer import RingDownAnalyzer
-from ringdownanalysis.batch_analyzer import BatchRingDownAnalyzer
+from ringdownanalysis.batch_analyzer import BatchRingDownAnalyzer, ProcessResult
 
 
 class TestBatchRingDownAnalyzer:
@@ -294,9 +294,11 @@ class TestBatchRingDownAnalyzer:
         """Test processing empty file list."""
         batch_analyzer = BatchRingDownAnalyzer()
 
-        results = batch_analyzer.process_files([], verbose=False)
+        result = batch_analyzer.process_files([], verbose=False)
 
-        assert len(results) == 0
+        assert isinstance(result, ProcessResult)
+        assert len(result) == 0
+        assert len(result.failed_files) == 0
         assert len(batch_analyzer.results) == 0
 
     def test_process_directory_nonexistent_raises(self):
@@ -329,8 +331,37 @@ class TestBatchRingDownAnalyzer:
         """Test process_directory on valid empty directory returns empty results."""
         with tempfile.TemporaryDirectory() as tmpdir:
             batch_analyzer = BatchRingDownAnalyzer()
-            results = batch_analyzer.process_directory(tmpdir, verbose=False)
-            assert len(results) == 0
+            result = batch_analyzer.process_directory(tmpdir, verbose=False)
+            assert isinstance(result, ProcessResult)
+            assert len(result) == 0
+            assert len(result.failed_files) == 0
+
+    def test_process_files_returns_failed_files(self):
+        """Test that process_files returns failed file info when files fail."""
+        batch_analyzer = BatchRingDownAnalyzer()
+
+        result = batch_analyzer.process_files(
+            ["/nonexistent/file1.csv", "/nonexistent/file2.mat"],
+            verbose=False,
+        )
+
+        assert isinstance(result, ProcessResult)
+        assert len(result) == 0
+        assert len(result.failed_files) == 2
+        assert result.has_failures()
+        for filepath, exc in result.failed_files:
+            assert "nonexistent" in filepath
+            assert isinstance(exc, FileNotFoundError)
+
+    def test_process_result_list_like(self):
+        """Test ProcessResult list-like behavior for backward compatibility."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [{"f_nls": 5.0}, {"f_nls": 5.1}]
+        result = ProcessResult(results=batch_analyzer.results, failed_files=[])
+
+        assert len(result) == 2
+        assert result[0]["f_nls"] == 5.0
+        assert list(result) == batch_analyzer.results
 
     def test_consistency_analysis_statistics(self):
         """Test that consistency analysis computes correct statistics."""

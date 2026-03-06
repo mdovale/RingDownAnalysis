@@ -12,7 +12,7 @@ This package provides both object-oriented and function-based APIs for:
 import logging
 
 from .analyzer import RingDownAnalyzer
-from .batch_analyzer import BatchRingDownAnalyzer
+from .batch_analyzer import BatchRingDownAnalyzer, ProcessResult
 from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
 from .estimators import (
@@ -29,6 +29,34 @@ from .signal import RingDownSignal
 # Configure package logger
 _logger = logging.getLogger(__name__)
 _logger.addHandler(logging.NullHandler())  # Default: no output unless configured
+
+
+def configure_logging(
+    level: int = logging.INFO,
+    format_string: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+) -> None:
+    """
+    Configure logging for the ringdownanalysis package with a default console handler.
+
+    Call this at application startup for easier debugging. By default, the package
+    uses NullHandler (no output) unless explicitly configured.
+
+    Parameters:
+    -----------
+    level : int
+        Logging level (default: logging.INFO)
+    format_string : str
+        Log message format (default includes timestamp, logger name, level, message)
+
+    Example:
+    --------
+    >>> import logging
+    >>> from ringdownanalysis import configure_logging, BatchRingDownAnalyzer
+    >>> configure_logging(level=logging.INFO)
+    >>> analyzer = BatchRingDownAnalyzer()
+    >>> results = analyzer.process_directory("data")
+    """
+    logging.basicConfig(level=level, format=format_string)
 
 # Compatibility layer (legacy function-based API)
 from .compat import (
@@ -51,7 +79,10 @@ from .plots import (
 )
 
 __all__ = [
+    # Logging
+    "configure_logging",
     # Classes
+    "ProcessResult",
     "RingDownSignal",
     "FrequencyEstimator",
     "NLSFrequencyEstimator",
