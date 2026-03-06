@@ -11,6 +11,9 @@ import pytest
 from ringdownanalysis.analyzer import RingDownAnalyzer
 from ringdownanalysis.batch_analyzer import BatchRingDownAnalyzer, ProcessResult
 
+# Path to committed fixture files (relative to project root)
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+
 
 class TestBatchRingDownAnalyzer:
     """Test BatchRingDownAnalyzer class."""
@@ -403,3 +406,83 @@ class TestBatchRingDownAnalyzer:
         assert np.isfinite(ratios[1])
         assert ratios[0] > 0
         assert ratios[1] > 0
+
+
+class TestProcessFilesWithRealFiles:
+    """Tests for process_files and process_directory with real/mock files."""
+
+    def test_process_files_with_valid_csv(self, tmp_csv_file):
+        """Test process_files with valid CSV file."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        result = batch_analyzer.process_files([tmp_csv_file], verbose=False)
+        assert len(result) == 1
+        assert len(result.failed_files) == 0
+        assert result[0]["type"] == "CSV"
+        assert np.isfinite(result[0]["f_nls"])
+
+    def test_process_files_with_valid_mat(self, tmp_mat_file):
+        """Test process_files with valid MAT file."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        result = batch_analyzer.process_files([tmp_mat_file], verbose=False)
+        assert len(result) == 1
+        assert len(result.failed_files) == 0
+        assert result[0]["type"] == "MAT"
+
+    def test_process_files_mixed_success_and_failure(self, tmp_csv_file):
+        """Test process_files with mix of valid and invalid files."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        result = batch_analyzer.process_files(
+            [tmp_csv_file, "/nonexistent/file.csv", tmp_csv_file],
+            verbose=False,
+        )
+        assert len(result) == 2  # Two successful
+        assert len(result.failed_files) == 1
+        assert result.has_failures()
+
+    def test_process_directory_with_pattern(self, tmp_path, tmp_csv_file):
+        """Test process_directory pattern matching."""
+        # Create second file with different name
+        csv2 = tmp_path / "other_ringdown.csv"
+        csv2.write_text(Path(tmp_csv_file).read_text())
+        batch_analyzer = BatchRingDownAnalyzer()
+        result = batch_analyzer.process_directory(str(tmp_path), pattern="*", verbose=False)
+        assert len(result) >= 1
+        # Pattern "other_*" should match only other_ringdown.csv
+        result_other = batch_analyzer.process_directory(
+            str(tmp_path), pattern="other_*", verbose=False
+        )
+        assert len(result_other) == 1
+        assert "other_ringdown" in result_other[0]["filename"]
+
+
+@pytest.mark.integration
+class TestIntegrationWithFixtures:
+    """Integration tests using committed fixture data."""
+
+    def test_full_pipeline_csv_fixture(self):
+        """Integration test: load fixture CSV and run full analysis pipeline."""
+        csv_path = FIXTURES_DIR / "sample_ringdown.csv"
+        if not csv_path.exists():
+            pytest.skip("Fixture sample_ringdown.csv not found")
+        batch_analyzer = BatchRingDownAnalyzer()
+        result = batch_analyzer.process_files([str(csv_path)], verbose=False)
+        assert len(result) == 1
+        r = result[0]
+        assert r["type"] == "CSV"
+        assert np.isfinite(r["f_nls"])
+        assert np.isfinite(r["f_dft"])
+        assert r["N"] >= 1000
+        assert r["tau_est"] > 0
+
+    def test_full_pipeline_mat_fixture(self):
+        """Integration test: load fixture MAT and run full analysis pipeline."""
+        mat_path = FIXTURES_DIR / "sample_ringdown.mat"
+        if not mat_path.exists():
+            pytest.skip("Fixture sample_ringdown.mat not found")
+        batch_analyzer = BatchRingDownAnalyzer()
+        result = batch_analyzer.process_files([str(mat_path)], verbose=False)
+        assert len(result) == 1
+        r = result[0]
+        assert r["type"] == "MAT"
+        assert np.isfinite(r["f_nls"])
+        assert r["N"] >= 1000

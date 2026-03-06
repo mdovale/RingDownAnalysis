@@ -182,9 +182,15 @@ class RingDownDataLoader:
             raise
 
         # Access the moku.data structure
+        # Support both: struct_as_record=True (moku["data"][0,0]) and
+        # struct_as_record=False (moku[0,0].data)
         try:
-            moku_data = mat_data["moku"]["data"][0, 0]
-        except (KeyError, IndexError, TypeError) as e:
+            moku = mat_data["moku"]
+            if hasattr(moku, "dtype") and moku.dtype.names and "data" in moku.dtype.names:
+                moku_data = moku["data"][0, 0]
+            else:
+                moku_data = moku[0, 0].data
+        except (KeyError, IndexError, TypeError, AttributeError) as e:
             logger.error(
                 "mat_structure_invalid",
                 extra={
