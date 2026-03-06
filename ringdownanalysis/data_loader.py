@@ -1,5 +1,10 @@
 """
 Data loading utilities for ring-down measurement files.
+
+File input assumptions:
+- CSV files: Trusted source. Pandas read_csv is generally safe for scientific data.
+- MAT files: scipy.io.loadmat can deserialize MATLAB objects. Only load MAT files
+  from trusted sources. For untrusted input, consider sandboxing or alternative loaders.
 """
 
 import logging
@@ -12,6 +17,18 @@ from scipy.io import loadmat
 from scipy.signal import detrend
 
 logger = logging.getLogger(__name__)
+
+# Default maximum file size (1 GB) to prevent memory exhaustion
+DEFAULT_MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024
+
+
+def _check_file_size(filepath: str, max_size_bytes: int) -> None:
+    """Raise ValueError if file exceeds max_size_bytes."""
+    size = Path(filepath).stat().st_size
+    if size > max_size_bytes:
+        raise ValueError(
+            f"File size ({size:,} bytes) exceeds maximum allowed ({max_size_bytes:,} bytes): {filepath}"
+        )
 
 
 class RingDownDataLoader:
@@ -40,7 +57,10 @@ class RingDownDataLoader:
             return False
 
     @staticmethod
-    def load_csv(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
+    def load_csv(
+        filepath: str,
+        max_file_size_bytes: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Load CSV data file from Moku:Lab Phasemeter.
 
@@ -58,6 +78,9 @@ class RingDownDataLoader:
         data : np.ndarray
             Phase in cycles (detrended)
         """
+        if max_file_size_bytes is not None:
+            _check_file_size(filepath, max_file_size_bytes)
+
         # Use pandas for fast CSV parsing
         # Skip comment lines (starting with '%') and header rows
         # Read only columns 0 (time) and 3 (phase)
@@ -118,7 +141,10 @@ class RingDownDataLoader:
         return t, data
 
     @staticmethod
-    def load_mat(filepath: str) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+    def load_mat(
+        filepath: str,
+        max_file_size_bytes: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
         """
         Load MAT data file from Moku:Lab Phasemeter.
 
@@ -136,8 +162,13 @@ class RingDownDataLoader:
         V2 : np.ndarray or None
             Phase in cycles (detrended) or None if not available
         """
+        if max_file_size_bytes is not None:
+            _check_file_size(filepath, max_file_size_bytes)
+
         try:
-            mat_data = loadmat(filepath)
+            # struct_as_record=False avoids loading MATLAB objects as nested structures
+            # that could execute code. Use trusted-source MAT files only.
+            mat_data = loadmat(filepath, struct_as_record=False)
         except Exception as e:
             logger.error(
                 "mat_load_failed",
@@ -196,7 +227,10 @@ class RingDownDataLoader:
         return t, data, V2
 
     @staticmethod
-    def load(filepath: str) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], str]:
+    def load(
+        filepath: str,
+        max_file_size_bytes: Optional[int] = DEFAULT_MAX_FILE_SIZE_BYTES,
+    ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], str]:
         """
         Load data file (CSV or MAT) automatically detecting format.
 
@@ -204,6 +238,8 @@ class RingDownDataLoader:
         -----------
         filepath : str
             Path to data file
+        max_file_size_bytes : int, optional
+            Maximum allowed file size in bytes. Default 1 GB. Set to None to disable.
 
         Returns:
         --------
@@ -216,6 +252,9 @@ class RingDownDataLoader:
         file_type : str
             'CSV' or 'MAT'
         """
+        if max_file_size_bytes is not None:
+            _check_file_size(filepath, max_file_size_bytes)
+
         path = Path(filepath)
         suffix = path.suffix.lower()
 
@@ -230,11 +269,11 @@ class RingDownDataLoader:
             )
 
         if suffix == ".csv":
-            t, data = RingDownDataLoader.load_csv(filepath)
+            t, data = RingDownDataLoader.load_csv(filepath, max_file_size_bytes)
             V2 = None  # CSV files don't have V2 data
             file_type = "CSV"
         elif suffix == ".mat":
-            t, data, V2 = RingDownDataLoader.load_mat(filepath)
+            t, data, V2 = RingDownDataLoader.load_mat(filepath, max_file_size_bytes)
             file_type = "MAT"
         else:
             logger.error(

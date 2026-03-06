@@ -2,7 +2,11 @@
 Unit tests for BatchRingDownAnalyzer class.
 """
 
+import tempfile
+from pathlib import Path
+
 import numpy as np
+import pytest
 
 from ringdownanalysis.analyzer import RingDownAnalyzer
 from ringdownanalysis.batch_analyzer import BatchRingDownAnalyzer
@@ -294,6 +298,39 @@ class TestBatchRingDownAnalyzer:
 
         assert len(results) == 0
         assert len(batch_analyzer.results) == 0
+
+    def test_process_directory_nonexistent_raises(self):
+        """Test that process_directory raises FileNotFoundError for non-existent dir."""
+        batch_analyzer = BatchRingDownAnalyzer()
+
+        with pytest.raises(FileNotFoundError, match="Directory does not exist"):
+            batch_analyzer.process_directory("/nonexistent/path/12345", verbose=False)
+
+    def test_process_directory_file_path_raises(self):
+        """Test that process_directory raises NotADirectoryError for file path."""
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            filepath = f.name
+
+        try:
+            batch_analyzer = BatchRingDownAnalyzer()
+            with pytest.raises(NotADirectoryError, match="not a directory"):
+                batch_analyzer.process_directory(filepath, verbose=False)
+        finally:
+            Path(filepath).unlink(missing_ok=True)
+
+    def test_process_directory_invalid_pattern_raises(self):
+        """Test that process_directory raises ValueError for path traversal in pattern."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            batch_analyzer = BatchRingDownAnalyzer()
+            with pytest.raises(ValueError, match="path traversal"):
+                batch_analyzer.process_directory(tmpdir, pattern="../*", verbose=False)
+
+    def test_process_directory_valid_empty_dir(self):
+        """Test process_directory on valid empty directory returns empty results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            batch_analyzer = BatchRingDownAnalyzer()
+            results = batch_analyzer.process_directory(tmpdir, verbose=False)
+            assert len(results) == 0
 
     def test_consistency_analysis_statistics(self):
         """Test that consistency analysis computes correct statistics."""

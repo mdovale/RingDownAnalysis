@@ -286,9 +286,30 @@ class BatchRingDownAnalyzer:
         --------
         List[Dict]
             List of result dictionaries
+
+        Raises:
+        -------
+        FileNotFoundError
+            If directory does not exist
+        ValueError
+            If directory path contains path traversal (e.g., `../`) that would
+            escape the intended base directory
         """
-        csv_files = sorted(glob.glob(str(Path(directory) / f"{pattern}.csv")))
-        mat_files = sorted(glob.glob(str(Path(directory) / f"{pattern}.mat")))
+        dir_path = Path(directory).resolve()
+        if not dir_path.exists():
+            raise FileNotFoundError(f"Directory does not exist: {directory}")
+        if not dir_path.is_dir():
+            raise NotADirectoryError(f"Path is not a directory: {directory}")
+
+        # Validate pattern does not contain path traversal
+        if ".." in pattern or "/" in pattern or "\\" in pattern:
+            raise ValueError(
+                "Pattern must not contain path traversal ('..', '/', '\\'). "
+                "Use only filename patterns (e.g., '*' or 'data_*')."
+            )
+
+        csv_files = sorted(glob.glob(str(dir_path / f"{pattern}.csv")))
+        mat_files = sorted(glob.glob(str(dir_path / f"{pattern}.mat")))
         all_files = csv_files + mat_files
 
         if logger.isEnabledFor(logging.INFO):
@@ -296,7 +317,7 @@ class BatchRingDownAnalyzer:
                 "directory_scan_complete",
                 extra={
                     "event": "directory_scan_complete",
-                    "directory": str(directory),
+                    "directory": str(dir_path),
                     "pattern": pattern,
                     "n_csv": len(csv_files),
                     "n_mat": len(mat_files),

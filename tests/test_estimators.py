@@ -87,6 +87,60 @@ class TestNLSFrequencyEstimator:
         assert result.Q is not None
         assert abs(result.Q - signal.Q) < signal.Q * 0.01  # Very close with known tau
 
+    def test_estimate_empty_array_raises(self):
+        """Test that empty signal raises ValueError."""
+        estimator = NLSFrequencyEstimator()
+        with pytest.raises(ValueError, match="cannot be empty"):
+            estimator.estimate(np.array([]), 100.0)
+
+    def test_estimate_single_sample_raises(self):
+        """Test that single-sample signal raises ValueError."""
+        estimator = NLSFrequencyEstimator()
+        with pytest.raises(ValueError, match="at least 2 samples"):
+            estimator.estimate(np.array([1.0]), 100.0)
+
+    def test_estimate_nan_raises(self):
+        """Test that signal with NaN raises ValueError."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=1000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+        x[10] = np.nan
+
+        estimator = NLSFrequencyEstimator()
+        with pytest.raises(ValueError, match="contains NaN"):
+            estimator.estimate(x, signal.fs)
+
+    def test_estimate_inf_raises(self):
+        """Test that signal with Inf raises ValueError."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=1000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+        x[10] = np.inf
+
+        estimator = NLSFrequencyEstimator()
+        with pytest.raises(ValueError, match="contains Inf"):
+            estimator.estimate(x, signal.fs)
+
+    def test_estimate_invalid_fs_raises(self):
+        """Test that invalid fs raises ValueError."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=1000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+
+        estimator = NLSFrequencyEstimator()
+        with pytest.raises(ValueError, match="positive and finite"):
+            estimator.estimate(x, 0.0)
+        with pytest.raises(ValueError, match="positive and finite"):
+            estimator.estimate(x, -100.0)
+        with pytest.raises(ValueError, match="positive and finite"):
+            estimator.estimate(x, np.nan)
+
+    def test_estimate_wrong_type_raises(self):
+        """Test that non-ndarray raises TypeError."""
+        estimator = NLSFrequencyEstimator()
+        with pytest.raises(TypeError, match="numpy.ndarray"):
+            estimator.estimate([1.0, 2.0, 3.0], 100.0)
+
 
 class TestDFTFrequencyEstimator:
     """Test DFTFrequencyEstimator class."""
@@ -167,3 +221,36 @@ class TestDFTFrequencyEstimator:
             assert result.tau > 0
             assert result.Q is not None
             assert result.Q > 0
+
+    def test_estimate_empty_array_raises(self):
+        """Test that empty signal raises ValueError."""
+        estimator = DFTFrequencyEstimator()
+        with pytest.raises(ValueError, match="cannot be empty"):
+            estimator.estimate(np.array([]), 100.0)
+
+    def test_estimate_single_sample_raises(self):
+        """Test that single-sample signal raises ValueError."""
+        estimator = DFTFrequencyEstimator()
+        with pytest.raises(ValueError, match="at least 2 samples"):
+            estimator.estimate(np.array([1.0]), 100.0)
+
+    def test_estimate_nan_raises(self):
+        """Test that signal with NaN raises ValueError."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=1000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+        x[10] = np.nan
+
+        estimator = DFTFrequencyEstimator()
+        with pytest.raises(ValueError, match="contains NaN"):
+            estimator.estimate(x, signal.fs)
+
+    def test_estimate_invalid_fs_raises(self):
+        """Test that invalid fs raises ValueError."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=1000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+
+        estimator = DFTFrequencyEstimator()
+        with pytest.raises(ValueError, match="positive and finite"):
+            estimator.estimate(x, 0.0)
