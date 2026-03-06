@@ -10,11 +10,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Add benchmarks directory to path
-benchmarks_dir = Path(__file__).parent
-sys.path.insert(0, str(benchmarks_dir.parent))
+# Add project root to path so benchmarks can be imported
+_benchmarks_dir = Path(__file__).parent
+sys.path.insert(0, str(_benchmarks_dir.parent))
 
-from benchmarks.profile_utils import (
+from benchmarks.profile_utils import (  # noqa: E402
     analyze_bottlenecks,
     print_bottleneck_report,
     profile_batch_analysis,

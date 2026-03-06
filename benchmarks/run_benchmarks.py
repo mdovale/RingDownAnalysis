@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -85,14 +86,12 @@ def run_benchmarks(size: str = "medium", output: str = None, verbose: bool = Tru
                     print(f"STDERR: {result.stderr}")
                 benchmark_data = None
 
-            if benchmark_data:
-                # Save results
-                if output:
-                    output_path = Path(output)
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(output_path, "w") as f:
-                        json.dump(benchmark_data, f, indent=2)
-                    print(f"\nResults saved to: {output_path}")
+            if benchmark_data and output:
+                output_path = Path(output)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(output_path, "w") as f:
+                    json.dump(benchmark_data, f, indent=2)
+                print(f"\nResults saved to: {output_path}")
 
             return benchmark_data
 
@@ -103,10 +102,8 @@ def run_benchmarks(size: str = "medium", output: str = None, verbose: bool = Tru
             return None
     finally:
         # Clean up temp file
-        try:
+        with contextlib.suppress(Exception):
             Path(tmp_json_path).unlink(missing_ok=True)
-        except Exception:
-            pass
 
 
 def generate_report(benchmark_data: dict, output_path: str = None):

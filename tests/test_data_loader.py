@@ -21,9 +21,7 @@ class TestRingDownDataLoader:
 0.02,0,0,0.2
 0.03,0,0,0.3
 """
-        with tempfile.NamedTemporaryFile(
-            suffix=".csv", mode="w", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
             f.write(csv_content)
             filepath = f.name
 
@@ -42,9 +40,7 @@ class TestRingDownDataLoader:
 0.0,0,0,0.0
 0.01,0,0,0.1
 """
-        with tempfile.NamedTemporaryFile(
-            suffix=".csv", mode="w", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
             f.write(csv_content)
             filepath = f.name
 
@@ -61,16 +57,12 @@ class TestRingDownDataLoader:
 0.0,0,0,0.0
 0.01,0,0,0.1
 """
-        with tempfile.NamedTemporaryFile(
-            suffix=".csv", mode="w", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
             f.write(csv_content)
             filepath = f.name
 
         try:
-            t, data = RingDownDataLoader.load_csv(
-                filepath, max_file_size_bytes=None
-            )
+            t, data = RingDownDataLoader.load_csv(filepath, max_file_size_bytes=None)
             assert len(t) == 2
         finally:
             Path(filepath).unlink(missing_ok=True)
@@ -81,9 +73,7 @@ class TestRingDownDataLoader:
 0.0,0,0,0.0
 0.01,0,0,0.1
 """
-        with tempfile.NamedTemporaryFile(
-            suffix=".csv", mode="w", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
             f.write(csv_content)
             filepath = f.name
 
@@ -95,9 +85,7 @@ class TestRingDownDataLoader:
 
     def test_load_unsupported_format_raises(self):
         """Test that unsupported format raises ValueError."""
-        with tempfile.NamedTemporaryFile(
-            suffix=".txt", mode="w", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
             f.write("some data")
             filepath = f.name
 

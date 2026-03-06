@@ -226,7 +226,7 @@ def profile_single_file_analysis(
             analyzer = RingDownAnalyzer()
             return analyzer.analyze_file(filepath)
 
-        result = profiler.profile(analyze)
+        profiler.profile(analyze)
 
         # Cleanup
         os.unlink(filepath)
@@ -236,7 +236,7 @@ def profile_single_file_analysis(
             analyzer = RingDownAnalyzer()
             return analyzer.analyze_file(filepath)
 
-        result = profiler.profile(analyze)
+        profiler.profile(analyze)
 
     if save_to:
         profiler.save_stats(save_to)
@@ -274,10 +274,10 @@ def profile_frequency_estimation(
     def estimate():
         if method in ("nls", "both"):
             nls_est = NLSFrequencyEstimator(tau_known=None)
-            f_nls = nls_est.estimate(x, signal.fs)
+            nls_est.estimate(x, signal.fs)
         if method in ("dft", "both"):
             dft_est = DFTFrequencyEstimator(window="rect")
-            f_dft = dft_est.estimate(x, signal.fs)
+            dft_est.estimate(x, signal.fs)
 
     profiler.profile(estimate)
 
@@ -320,7 +320,6 @@ def profile_batch_analysis(
 
     try:
         signal = RingDownSignal(f0=5.0, fs=100.0, N=N_per_file, A0=1.0, snr_db=60.0, Q=10000.0)
-        rng = np.random.default_rng(42)
 
         for i in range(n_files):
             t, x, _ = signal.generate(rng=np.random.default_rng(42 + i))
@@ -336,7 +335,7 @@ def profile_batch_analysis(
             analyzer = BatchRingDownAnalyzer()
             return analyzer.process_files(filepaths, verbose=False, n_jobs=1)
 
-        result = profiler.profile(analyze)
+        profiler.profile(analyze)
 
     finally:
         # Cleanup
@@ -385,7 +384,7 @@ def profile_monte_carlo(
             n_workers=1,
         )
 
-    result = profiler.profile(run_mc)
+    profiler.profile(run_mc)
 
     if save_to:
         profiler.save_stats(save_to)

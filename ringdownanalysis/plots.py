@@ -302,7 +302,7 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
     """Plot Q error distributions for NLS and DFT methods."""
     has_q_nls = "errors_q_nls" in results and len(results["errors_q_nls"]) > 0
     has_q_dft = "errors_q_dft" in results and len(results["errors_q_dft"]) > 0
-    
+
     if not has_q_nls and not has_q_dft:
         # Return empty axes if no Q data
         if ax is None:
@@ -354,7 +354,9 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
         )
         ax_plot.axvline(0, color="tomato", linestyle="--", label="Zero error")
         if crlb_std_q is not None and np.isfinite(crlb_std_q):
-            ax_plot.axvline(crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
+            ax_plot.axvline(
+                crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}"
+            )
             ax_plot.axvline(-crlb_std_q, color="lime", linestyle="--")
         ax_plot.set_xlabel("Q error")
         ax_plot.set_ylabel("Probability density")
@@ -381,7 +383,9 @@ def plot_q_individual_results(results: dict, ax=None, figsize=None, dpi=None, *a
         )
         ax_plot.axvline(0, color="tomato", linestyle="--", label="Zero error")
         if crlb_std_q is not None and np.isfinite(crlb_std_q):
-            ax_plot.axvline(crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}")
+            ax_plot.axvline(
+                crlb_std_q, color="lime", linestyle="--", label=f"CRLB std = {crlb_std_q:.2e}"
+            )
             ax_plot.axvline(-crlb_std_q, color="lime", linestyle="--")
         ax_plot.set_xlabel("Q error")
         ax_plot.set_ylabel("Probability density")
@@ -402,7 +406,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     """Plot Q performance metrics comparison for NLS and DFT methods."""
     has_q_nls = "errors_q_nls" in results and len(results["errors_q_nls"]) > 0
     has_q_dft = "errors_q_dft" in results and len(results["errors_q_dft"]) > 0
-    
+
     if not has_q_nls and not has_q_dft:
         # Return empty axes if no Q data
         if ax is None:
@@ -445,16 +449,20 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     methods = []
     stds = []
     efficiencies = []
-    
+
     if has_q_nls:
         methods.append("NLS")
         stds.append(stats["q_nls"]["std"])
-        efficiencies.append(crlb_std_q / stats["q_nls"]["std"] if stats["q_nls"]["std"] > 0 else 0.0)
-    
+        efficiencies.append(
+            crlb_std_q / stats["q_nls"]["std"] if stats["q_nls"]["std"] > 0 else 0.0
+        )
+
     if has_q_dft:
         methods.append("DFT+NLS")
         stds.append(stats["q_dft"]["std"])
-        efficiencies.append(crlb_std_q / stats["q_dft"]["std"] if stats["q_dft"]["std"] > 0 else 0.0)
+        efficiencies.append(
+            crlb_std_q / stats["q_dft"]["std"] if stats["q_dft"]["std"] > 0 else 0.0
+        )
 
     if ax is None:
         if figsize is None:
@@ -470,7 +478,7 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
     # Standard deviation comparison
     ax_plot = axes[0]
     x_pos = np.arange(len(methods))
-    colors = ["blue", "tomato"][:len(methods)]
+    colors = ["blue", "tomato"][: len(methods)]
     bars = ax_plot.bar(x_pos, stds, alpha=0.7, edgecolor="black", color=colors, *args, **kwargs)
     ax_plot.axhline(
         crlb_std_q, color="lime", linestyle="--", linewidth=2, label=f"CRLB = {crlb_std_q:.2e}"
@@ -485,7 +493,9 @@ def plot_q_performance_comparison(results: dict, ax=None, figsize=None, dpi=None
 
     # Efficiency comparison
     ax_plot = axes[1]
-    bars = ax_plot.bar(x_pos, efficiencies, alpha=0.7, edgecolor="black", color=colors, *args, **kwargs)
+    bars = ax_plot.bar(
+        x_pos, efficiencies, alpha=0.7, edgecolor="black", color=colors, *args, **kwargs
+    )
     ax_plot.axhline(1.0, color="tomato", linestyle="--", linewidth=2, label="CRLB (efficiency = 1)")
     ax_plot.set_xticks(x_pos)
     ax_plot.set_xticklabels(methods)

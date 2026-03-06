@@ -1,6 +1,23 @@
 """
 Frequency Estimation Analysis for Ring-Down Signals: NLS and Optimized DFT Methods
 
+.. deprecated::
+    This module is deprecated. Use the :mod:`ringdownanalysis.compat` API instead,
+    which provides equivalent functionality via :func:`monte_carlo_analysis`,
+    :func:`generate_ringdown`, :func:`estimate_freq_nls_ringdown`, and
+    :func:`estimate_freq_dft`. The compat layer wraps the refactored
+    :class:`MonteCarloAnalyzer`, :class:`RingDownSignal`, and estimator classes.
+"""
+
+import warnings
+
+warnings.warn(
+    "legacy_ring_down_mc is deprecated. Use ringdownanalysis.compat instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+"""
 This script performs Monte Carlo analysis comparing two frequency estimation methods for ring-down signals:
 1. Nonlinear least squares (NLS) with ring-down model
 2. Optimized DFT peak fitting (with rectangular window, Lorentzian fitting for ring-down signals, and zero-padding)

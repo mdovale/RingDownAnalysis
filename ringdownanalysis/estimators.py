@@ -25,43 +25,29 @@ def _validate_signal_input(x: np.ndarray) -> None:
         If x is empty, has wrong dtype, or contains NaN/Inf
     """
     if not isinstance(x, np.ndarray):
-        raise TypeError(
-            f"Expected numpy.ndarray for signal x, got {type(x).__name__}"
-        )
+        raise TypeError(f"Expected numpy.ndarray for signal x, got {type(x).__name__}")
     if x.ndim != 1:
-        raise ValueError(
-            f"Signal x must be 1-dimensional, got shape {x.shape}"
-        )
+        raise ValueError(f"Signal x must be 1-dimensional, got shape {x.shape}")
     if len(x) == 0:
-        raise ValueError(
-            "Signal x cannot be empty; need at least one sample for estimation"
-        )
+        raise ValueError("Signal x cannot be empty; need at least one sample for estimation")
     if len(x) == 1:
         raise ValueError(
             "Signal x must have at least 2 samples; single-sample signals "
             "cannot be used for frequency estimation"
         )
     if not np.issubdtype(x.dtype, np.floating) and not np.issubdtype(x.dtype, np.integer):
-        raise ValueError(
-            f"Signal x must have numeric dtype (float or int), got {x.dtype}"
-        )
+        raise ValueError(f"Signal x must have numeric dtype (float or int), got {x.dtype}")
     x_float = np.asarray(x, dtype=np.float64)
     if np.any(np.isnan(x_float)):
-        raise ValueError(
-            "Signal x contains NaN; cannot perform frequency estimation"
-        )
+        raise ValueError("Signal x contains NaN; cannot perform frequency estimation")
     if np.any(np.isinf(x_float)):
-        raise ValueError(
-            "Signal x contains Inf; cannot perform frequency estimation"
-        )
+        raise ValueError("Signal x contains Inf; cannot perform frequency estimation")
 
 
 def _validate_fs(fs: float) -> None:
     """Validate sampling frequency fs. Raises ValueError if invalid."""
     if not np.isfinite(fs) or fs <= 0:
-        raise ValueError(
-            f"Sampling frequency fs must be positive and finite, got {fs}"
-        )
+        raise ValueError(f"Sampling frequency fs must be positive and finite, got {fs}")
 
 
 class EstimationResult(NamedTuple):

@@ -13,7 +13,6 @@ from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
 from .estimators import (
     DFTFrequencyEstimator,
-    EstimationResult,
     NLSFrequencyEstimator,
     _estimate_initial_parameters_from_dft,
     _estimate_initial_tau_from_envelope,

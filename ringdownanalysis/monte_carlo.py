@@ -343,7 +343,9 @@ class MonteCarloAnalyzer:
         ]
 
         # Storage for errors
-        errors_dict = {i: {"nls": None, "dft": None, "q_nls": None, "q_dft": None} for i in range(n_mc)}
+        errors_dict = {
+            i: {"nls": None, "dft": None, "q_nls": None, "q_dft": None} for i in range(n_mc)
+        }
         failure_counts = {"nls": 0, "dft": 0, "q_nls": 0, "q_dft": 0}
 
         # Process trials with or without parallelization
@@ -357,8 +359,8 @@ class MonteCarloAnalyzer:
                 with tqdm(total=n_mc, desc="Monte Carlo trials", unit="trial") as pbar:
                     for future in as_completed(futures):
                         try:
-                            trial_idx, err_nls, err_dft, err_q_nls, err_q_dft, success = future.result(
-                                timeout=timeout_per_trial
+                            trial_idx, err_nls, err_dft, err_q_nls, err_q_dft, success = (
+                                future.result(timeout=timeout_per_trial)
                             )
                             errors_dict[trial_idx] = {
                                 "nls": err_nls,
@@ -389,7 +391,12 @@ class MonteCarloAnalyzer:
                             print(
                                 f"\n  Warning: Trial {trial_idx} timed out after {timeout_per_trial}s"
                             )
-                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None, "q_dft": None}
+                            errors_dict[trial_idx] = {
+                                "nls": None,
+                                "dft": None,
+                                "q_nls": None,
+                                "q_dft": None,
+                            }
                             failure_counts["nls"] += 1
                             failure_counts["dft"] += 1
                             failure_counts["q_nls"] += 1
@@ -407,7 +414,12 @@ class MonteCarloAnalyzer:
                                 exc_info=True,
                             )
                             print(f"\n  Warning: Trial {trial_idx} failed with error: {e}")
-                            errors_dict[trial_idx] = {"nls": None, "dft": None, "q_nls": None, "q_dft": None}
+                            errors_dict[trial_idx] = {
+                                "nls": None,
+                                "dft": None,
+                                "q_nls": None,
+                                "q_dft": None,
+                            }
                             failure_counts["nls"] += 1
                             failure_counts["dft"] += 1
                             failure_counts["q_nls"] += 1
@@ -432,7 +444,9 @@ class MonteCarloAnalyzer:
                 iterator = trial_args
 
             for args in iterator:
-                trial_idx, err_nls, err_dft, err_q_nls, err_q_dft, success = _process_single_trial(args)
+                trial_idx, err_nls, err_dft, err_q_nls, err_q_dft, success = _process_single_trial(
+                    args
+                )
                 errors_dict[trial_idx] = {
                     "nls": err_nls,
                     "dft": err_dft,

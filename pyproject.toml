@@ -41,6 +41,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-benchmark>=4.0.0",
     "ruff>=0.1.0",
+    "mypy>=1.0.0",
 ]
 examples = [
     "pandas>=1.3.0",
@@ -65,6 +66,7 @@ packages = ["ringdownanalysis"]
 target-version = "py38"
 line-length = 100
 exclude = [
+    "**/legacy_ring_down_mc.py",
     ".bzr",
     ".direnv",
     ".eggs",
@@ -110,14 +112,39 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]  # unused imports in __init__.py are often intentional
-"tests/*" = ["E501"]  # allow longer lines in tests
+"__init__.py" = ["F401"]
+"tests/*" = ["E501", "N806"]
+# Scientific notation: N, A0, Q, T, etc. are standard in signal processing
+"ringdownanalysis/*.py" = ["N803", "N806", "N802"]
+"ringdownanalysis/monte_carlo.py" = ["E402"]
+"examples/*" = ["N806", "F841", "B026", "B007"]
+"ringdownanalysis/plots.py" = ["F841", "B026", "SIM105"]
+"benchmarks/*" = ["N803"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+# Allow incremental type hint completion; fix reported issues over time
+allow_untyped_defs = true
+no_implicit_optional = false
+# Disable strict checks that require extensive annotations; re-enable as types are completed
+disable_error_code = ["no-any-return", "var-annotated", "return-value", "assignment", "dict-item", "attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["ringdownanalysis.legacy_ring_down_mc", "ringdownanalysis.plots"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"

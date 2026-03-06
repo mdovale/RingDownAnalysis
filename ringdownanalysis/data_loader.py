@@ -105,7 +105,7 @@ class RingDownDataLoader:
                     "error_msg": str(e),
                 },
             )
-            raise ValueError(f"No valid data lines found in CSV file: {e}")
+            raise ValueError(f"No valid data lines found in CSV file: {e}") from e
 
         if df.empty:
             logger.error(
@@ -194,7 +194,7 @@ class RingDownDataLoader:
                     "error_msg": str(e),
                 },
             )
-            raise ValueError(f"Invalid MAT file structure: {e}")
+            raise ValueError(f"Invalid MAT file structure: {e}") from e
 
         # Extract time (column 1, index 0) and phase (column 4, index 3)
         t_raw = moku_data[:, 0].flatten()

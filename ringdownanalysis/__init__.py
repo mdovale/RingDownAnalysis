@@ -13,6 +13,15 @@ import logging
 
 from .analyzer import RingDownAnalyzer
 from .batch_analyzer import BatchRingDownAnalyzer, ProcessResult
+from .compat import (
+    crlb_var_f_ringdown_explicit,
+    db_to_lin,
+    estimate_freq_dft,
+    estimate_freq_dft_optimized,
+    estimate_freq_nls_ringdown,
+    generate_ringdown,
+    monte_carlo_analysis,
+)
 from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
 from .estimators import (
@@ -22,8 +31,13 @@ from .estimators import (
     NLSFrequencyEstimator,
 )
 from .monte_carlo import MonteCarloAnalyzer
-
-# Core classes
+from .plots import (
+    plot_aggregate_results,
+    plot_individual_results,
+    plot_performance_comparison,
+    plot_q_individual_results,
+    plot_q_performance_comparison,
+)
 from .signal import RingDownSignal
 
 # Configure package logger
@@ -58,25 +72,6 @@ def configure_logging(
     """
     logging.basicConfig(level=level, format=format_string)
 
-# Compatibility layer (legacy function-based API)
-from .compat import (
-    crlb_var_f_ringdown_explicit,
-    db_to_lin,
-    estimate_freq_dft,
-    estimate_freq_dft_optimized,
-    estimate_freq_nls_ringdown,
-    generate_ringdown,
-    monte_carlo_analysis,
-)
-
-# Plotting functions
-from .plots import (
-    plot_aggregate_results,
-    plot_individual_results,
-    plot_performance_comparison,
-    plot_q_individual_results,
-    plot_q_performance_comparison,
-)
 
 __all__ = [
     # Logging
