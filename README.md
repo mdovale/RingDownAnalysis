@@ -287,6 +287,12 @@ See `benchmarks/README.md` for detailed information on performance benchmarking 
 - **Exponential Decay Impact**: The exponential amplitude decay reduces effective observation time and SNR, degrading estimation performance compared to constant-amplitude signals. The degradation depends on the ratio T/τ (observation time to decay time constant)
 - **Scaling Relationships**: For slow decay (T ≪ τ), accuracy scales as T⁻³/². For rapid decay (T ≫ τ), accuracy is limited by τ and scales as τ⁻³/²
 
+## Security
+
+**File input**: Load only CSV and MAT files from trusted sources. MAT files use `struct_as_record=False` to reduce deserialization risks; for untrusted input, consider sandboxing or alternative loaders. CSV files via Pandas are generally safe for typical scientific data.
+
+**Path handling**: `process_directory()` validates that the directory exists and rejects path traversal in the glob pattern (e.g., `../`). For production use with user-supplied paths (e.g., from a web form), validate and resolve paths to a trusted base directory before passing them to the API.
+
 ## Data Format
 
 Experimental data files should be placed in the `data/` directory:
@@ -296,13 +302,20 @@ Experimental data files should be placed in the `data/` directory:
 
 ## Dependencies
 
-Core dependencies (automatically installed):
+Core dependencies (automatically installed via `pip install -e .`):
 - NumPy >= 1.20.0
 - SciPy >= 1.7.0
 - Matplotlib >= 3.5.0
 - tqdm >= 4.60.0
 - joblib >= 1.0.0
 - pandas >= 1.3.0
+
+For reproducible environments (examples, notebooks), install from pinned versions:
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+```
 
 Optional dependencies:
 - Jupyter >= 1.0.0 (for notebooks)

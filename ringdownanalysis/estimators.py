@@ -322,6 +322,11 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         --------
         float
             Estimated frequency (Hz)
+
+        Raises:
+        -------
+        ValueError
+            If x is empty, has wrong dtype, contains NaN/Inf, or fs is invalid
         """
         _validate_signal_input(x)
         _validate_fs(fs)
@@ -456,6 +461,11 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         --------
         EstimationResult
             Named tuple with (f, tau, Q) estimates
+
+        Raises:
+        -------
+        ValueError
+            If x is empty, has wrong dtype, contains NaN/Inf, or fs is invalid
         """
         _validate_signal_input(x)
         _validate_fs(fs)
@@ -603,6 +613,11 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         --------
         float
             Estimated frequency (Hz)
+
+        Raises:
+        -------
+        ValueError
+            If x is empty, has wrong dtype, contains NaN/Inf, or fs is invalid
         """
         _validate_signal_input(x)
         _validate_fs(fs)
@@ -690,6 +705,11 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         --------
         EstimationResult
             Named tuple with (f, tau, Q) estimates
+
+        Raises:
+        -------
+        ValueError
+            If x is empty, has wrong dtype, contains NaN/Inf, or fs is invalid
         """
         _validate_signal_input(x)
         _validate_fs(fs)

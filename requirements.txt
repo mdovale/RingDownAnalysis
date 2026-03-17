@@ -1,0 +1,8 @@
+# Pinned dependencies for reproducibility (examples, notebooks, CI).
+# Generated from project venv. Update with: pip freeze | grep -E "^(numpy|scipy|matplotlib|tqdm|joblib|pandas)="
+numpy==2.4.2
+scipy==1.17.1
+matplotlib==3.10.8
+tqdm==4.67.3
+joblib==1.5.3
+pandas==3.0.1

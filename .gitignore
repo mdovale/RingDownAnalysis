@@ -69,6 +69,26 @@ htmlcov/
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb_checkpoints/
+# Jupyter exports (HTML, PDF, etc.)
+notebooks/*.html
+docs/**/*.html
+
+# LaTeX build outputs
+*.aux
+*.out
+*.bbl
+*.blg
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex(busy)
+*.nav
+*.snm
+*.vrb
+*.dvi
 
 # IDEs
 .vscode/

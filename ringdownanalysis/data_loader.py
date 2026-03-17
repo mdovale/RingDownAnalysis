@@ -77,6 +77,13 @@ class RingDownDataLoader:
             Time array (s), starting from 0
         data : np.ndarray
             Phase in cycles (detrended)
+
+        Raises:
+        -------
+        FileNotFoundError
+            If the file does not exist
+        ValueError
+            If file exceeds max_file_size_bytes, no valid data lines, or malformed numeric data
         """
         if max_file_size_bytes is not None:
             _check_file_size(filepath, max_file_size_bytes)
@@ -161,6 +168,13 @@ class RingDownDataLoader:
             Phase in cycles (detrended)
         V2 : np.ndarray or None
             Phase in cycles (detrended) or None if not available
+
+        Raises:
+        -------
+        FileNotFoundError
+            If the file does not exist
+        ValueError
+            If file exceeds max_file_size_bytes or MAT structure is invalid (missing moku.data)
         """
         if max_file_size_bytes is not None:
             _check_file_size(filepath, max_file_size_bytes)
@@ -257,6 +271,13 @@ class RingDownDataLoader:
             Phase in cycles (detrended) or None if not available
         file_type : str
             'CSV' or 'MAT'
+
+        Raises:
+        -------
+        FileNotFoundError
+            If the file does not exist
+        ValueError
+            If file exceeds max_file_size_bytes, unsupported format, or load_csv/load_mat fail
         """
         if max_file_size_bytes is not None:
             _check_file_size(filepath, max_file_size_bytes)
