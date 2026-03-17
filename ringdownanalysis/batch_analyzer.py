@@ -21,6 +21,15 @@ from .analyzer import RingDownAnalyzer
 logger = logging.getLogger(__name__)
 
 
+def _result_uncertainty_std(result: Dict) -> float:
+    """Return the preferred per-record frequency uncertainty summary."""
+    if "uncertainty_std_f" in result:
+        return float(result["uncertainty_std_f"])
+    if "plugin_crlb_std_f" in result:
+        return float(result["plugin_crlb_std_f"])
+    return float(result["crlb_std_f"])
+
+
 @dataclass
 class ProcessResult:
     """
@@ -179,7 +188,7 @@ class BatchRingDownAnalyzer:
                         print(f"  NLS frequency: {result['f_nls']:.6f} Hz")
                         print(f"  DFT frequency: {result['f_dft']:.6f} Hz")
                         print(f"  Difference: {abs(result['f_nls'] - result['f_dft']):.6e} Hz")
-                        print(f"  CRLB std: {result['crlb_std_f']:.6e} Hz")
+                        print(f"  Plugin bound std: {_result_uncertainty_std(result):.6e} Hz")
                 except Exception as e:
                     failed_files.append((str(filepath), e))
                     logger.error(
@@ -287,7 +296,7 @@ class BatchRingDownAnalyzer:
                             print(f"  NLS frequency: {result['f_nls']:.6f} Hz")
                             print(f"  DFT frequency: {result['f_dft']:.6f} Hz")
                             print(f"  Difference: {abs(result['f_nls'] - result['f_dft']):.6e} Hz")
-                            print(f"  CRLB std: {result['crlb_std_f']:.6e} Hz")
+                            print(f"  Plugin bound std: {_result_uncertainty_std(result):.6e} Hz")
                     except Exception as e:
                         failed_files.append((str(filepath), e))
                         logger.error(
@@ -427,7 +436,8 @@ class BatchRingDownAnalyzer:
                 q = r["Q_nls"]
             else:
                 # Fallback: calculate from f_nls and tau_est (backward compatibility)
-                q = np.pi * r["f_nls"] * r["tau_est"]
+                tau_for_q = r.get("tau_nls") or r.get("tau_model") or r["tau_est"]
+                q = np.pi * r["f_nls"] * tau_for_q
             q_factors.append(q)
             r["Q"] = q
 
@@ -462,7 +472,7 @@ class BatchRingDownAnalyzer:
                     "f_NLS (Hz)": f"{r['f_nls']:.6f}",
                     "f_DFT (Hz)": f"{r['f_dft']:.6f}",
                     "|f_NLS - f_DFT| (Hz)": f"{abs(r['f_nls'] - r['f_dft']):.6e}",
-                    "CRLB std (Hz)": f"{r['crlb_std_f']:.6e}",
+                    "Plugin bound std (Hz)": f"{_result_uncertainty_std(r):.6e}",
                     "A0_est": f"{r['A0_est']:.4f}",
                     "sigma_est": f"{r['sigma_est']:.6e}",
                 }
@@ -602,9 +612,9 @@ class BatchRingDownAnalyzer:
         Dict
             Dictionary with analysis results including:
             - 'frequency_diffs': array of abs(f_NLS - f_DFT)
-            - 'crlb_stds': array of CRLB standard deviations
-            - 'ratios': array of abs(f_NLS - f_DFT) / CRLB_std
-            - 'crlb_statistics': dict with mean, min, max CRLB
+            - 'crlb_stds': array of plug-in CRLB standard deviations
+            - 'ratios': array of abs(f_NLS - f_DFT) / plugin_bound_std
+            - 'crlb_statistics': dict with mean, min, max plug-in bound
             - 'ratio_statistics': dict with mean, median, min, max ratios
         """
         if not self.results:
@@ -613,7 +623,7 @@ class BatchRingDownAnalyzer:
         # Vectorized extraction and computation
         f_nls_all = np.array([r["f_nls"] for r in self.results], dtype=float)
         f_dft_all = np.array([r["f_dft"] for r in self.results], dtype=float)
-        crlb_stds = np.array([r["crlb_std_f"] for r in self.results], dtype=float)
+        crlb_stds = np.array([_result_uncertainty_std(r) for r in self.results], dtype=float)
 
         # Compute differences vectorized
         diffs = np.abs(f_nls_all - f_dft_all)
@@ -728,7 +738,7 @@ class BatchRingDownAnalyzer:
                     "f_DFT (Hz)": f"{r['f_dft']:.9f}",
                     "Deviation from NLS mean (Hz)": f"{(r['f_nls'] - nls_mean):.6e}",
                     "Deviation from DFT mean (Hz)": f"{(r['f_dft'] - dft_mean):.6e}",
-                    "CRLB std (Hz)": f"{r['crlb_std_f']:.6e}",
+                    "Plugin bound std (Hz)": f"{_result_uncertainty_std(r):.6e}",
                 }
             )
 

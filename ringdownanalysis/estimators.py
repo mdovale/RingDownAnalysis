@@ -59,6 +59,14 @@ class EstimationResult(NamedTuple):
     """Estimated decay time constant (s), or None if not estimated"""
     Q: Optional[float]
     """Estimated quality factor, or None if tau is not available"""
+    success: bool = True
+    """Whether the estimator converged without falling back to the initializer"""
+    used_fallback: bool = False
+    """Whether the result fell back to a heuristic initializer"""
+    message: Optional[str] = None
+    """Fit termination or fallback message"""
+    nfev: Optional[int] = None
+    """Number of function evaluations used by the fit, if available"""
 
 
 class FrequencyEstimator(ABC):
@@ -89,6 +97,68 @@ class FrequencyEstimator(ABC):
 def _lorentzian_func(f: np.ndarray, A: float, f0: float, gamma: float, offset: float) -> np.ndarray:
     """Lorentzian function for power spectrum fitting."""
     return A / ((f - f0) ** 2 + (gamma / 2.0) ** 2) + offset
+
+
+def _amplitude_floor(x: np.ndarray) -> float:
+    """Return a small positive amplitude scale suitable for fit bounds."""
+    scale = max(
+        float(np.std(x) * np.sqrt(2.0)),
+        float(np.max(np.abs(x))) * 1e-6 if len(x) > 0 else 0.0,
+        np.finfo(np.float64).eps,
+    )
+    return scale
+
+
+def _sanitize_initial_parameters(
+    x: np.ndarray,
+    fs: float,
+    initial_params: tuple,
+) -> tuple[float, float, float, float]:
+    """Sanitize heuristic initialization before passing it to bounded solvers."""
+    f0_init, phi0_init, A0_init, c0 = initial_params
+
+    if not np.isfinite(f0_init) or f0_init < 0:
+        f0_init = fs / max(len(x), 2)
+    else:
+        f0_init = float(min(max(f0_init, 0.0), 0.5 * fs))
+
+    if not np.isfinite(phi0_init):
+        phi0_init = 0.0
+    else:
+        phi0_init = float(np.arctan2(np.sin(phi0_init), np.cos(phi0_init)))
+
+    if not np.isfinite(c0):
+        c0 = float(np.mean(x))
+    else:
+        c0 = float(c0)
+
+    A0_init = float(abs(A0_init)) if np.isfinite(A0_init) else 0.0
+    A0_init = max(A0_init, _amplitude_floor(x))
+
+    return f0_init, phi0_init, A0_init, c0
+
+
+def _sanitize_tau_guess(tau_init: float | None, t: np.ndarray) -> tuple[float, float, float]:
+    """Return a feasible tau initialization and matching lower/upper bounds."""
+    tau_lower = max(float(t[1]), np.finfo(np.float64).eps)
+    tau_upper_default = max(10.0 * float(t[-1]), tau_lower * 10.0)
+
+    if tau_init is None or not np.isfinite(tau_init) or tau_init <= 0:
+        tau_guess = max(0.5 * float(t[-1]), tau_lower * 2.0)
+    else:
+        tau_guess = float(tau_init)
+
+    tau_upper = max(tau_upper_default, tau_guess * 1.1)
+    tau_guess = min(max(tau_guess, tau_lower * 1.01), tau_upper * 0.99)
+
+    return tau_guess, tau_lower, tau_upper
+
+
+def _has_resolved_ac_content(x: np.ndarray) -> bool:
+    """Return True when the demeaned signal has meaningful AC content."""
+    x_demean = x - np.mean(x)
+    threshold = max(float(np.max(np.abs(x))) * 1e-12, np.finfo(np.float64).eps * 10.0)
+    return float(np.max(np.abs(x_demean))) > threshold
 
 
 def _fit_lorentzian_to_peak(
@@ -252,20 +322,24 @@ def _estimate_initial_parameters_from_dft(x: np.ndarray, fs: float) -> tuple:
     A0_init = np.sqrt(2.0) * np.sqrt(mag2[k] / N)
     if A0_init < 0.1 * np.std(x) or A0_init > 10 * np.std(x):
         A0_init = np.std(x) * np.sqrt(2.0)
+    A0_init = max(float(A0_init), _amplitude_floor(x))
 
     c0 = np.mean(x)
 
-    return f0_init, phi0_init, A0_init, c0
+    return _sanitize_initial_parameters(x, fs, (f0_init, phi0_init, A0_init, c0))
 
 
 def _estimate_initial_tau_from_envelope(x: np.ndarray, t: np.ndarray) -> float:
     """Estimate initial tau from signal envelope decay using RMS in windows."""
     N = len(x)
-    window_size = min(1000, N // 10)
+    if N < 10:
+        return max(float(t[-1]) / 2.0, float(t[1]))
+
+    window_size = max(1, min(1000, N // 10))
     n_windows = N // window_size
 
     if n_windows == 0:
-        return t[-1] / 2.0
+        return max(float(t[-1]) / 2.0, float(t[1]))
 
     # Vectorized RMS calculation using reshape and std along axis
     # Pad or truncate to make evenly divisible
@@ -284,9 +358,9 @@ def _estimate_initial_tau_from_envelope(x: np.ndarray, t: np.ndarray) -> float:
     decay_idx = np.where(rms_values < rms_peak * np.exp(-1))[0]
 
     if len(decay_idx) > 0 and decay_idx[0] > 0:
-        return t[decay_idx[0] * window_size]
+        return max(float(t[decay_idx[0] * window_size]), float(t[1]))
     else:
-        return t[-1] / 2.0
+        return max(float(t[-1]) / 2.0, float(t[1]))
 
 
 class NLSFrequencyEstimator(FrequencyEstimator):
@@ -304,6 +378,244 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             Known decay time constant. If None, tau is estimated along with other parameters.
         """
         self.tau_known = tau_known
+
+    @staticmethod
+    def _frequency_sanity_passes(f_hat: float, f0_init: float, fs: float) -> bool:
+        """Return True when the fitted frequency is physically and numerically plausible."""
+        if not np.isfinite(f_hat) or f_hat < 0 or f_hat > 0.5 * fs:
+            return False
+        if f0_init <= 0:
+            return True
+        return abs(f_hat - f0_init) <= 0.5 * f0_init
+
+    def _estimate_known_tau_full(
+        self,
+        x: np.ndarray,
+        fs: float,
+        initial_params: tuple,
+        **kwargs,
+    ) -> EstimationResult:
+        """Estimate frequency when tau is fixed a priori."""
+        N = len(x)
+        t = np.arange(N) / fs
+        f0_init, phi0_init, A0_init, c0 = _sanitize_initial_parameters(x, fs, initial_params)
+
+        if not _has_resolved_ac_content(x):
+            return EstimationResult(
+                f=f0_init,
+                tau=self.tau_known,
+                Q=np.pi * f0_init * self.tau_known,
+                success=False,
+                used_fallback=True,
+                message="Signal has no resolved AC content after demeaning",
+                nfev=0,
+            )
+
+        def residuals(p):
+            A0, f, phi, c = p
+            return (A0 * np.exp(-t / self.tau_known) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
+
+        df = fs / N
+        f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
+        f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
+        amp_upper = max(10.0 * A0_init, _amplitude_floor(x) * 10.0)
+
+        ls_kwargs = {
+            "method": "trf",
+            "verbose": 0,
+            "ftol": kwargs.get("ftol", 1e-8),
+            "xtol": kwargs.get("xtol", 1e-8),
+            "gtol": kwargs.get("gtol", 1e-8),
+            "max_nfev": kwargs.get("max_nfev", 500),
+        }
+        res = least_squares(
+            residuals,
+            x0=np.array([A0_init, f0_init, phi0_init, c0]),
+            bounds=([0.0, f_low, -np.pi, -np.inf], [amp_upper, f_high, np.pi, np.inf]),
+            **ls_kwargs,
+        )
+
+        if not res.success:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "nls_estimation_failed",
+                    extra={
+                        "event": "nls_estimation_failed",
+                        "method": "nls_tau_known",
+                        "fit_message": res.message,
+                        "nfev": res.nfev,
+                    },
+                )
+            return EstimationResult(
+                f=f0_init,
+                tau=self.tau_known,
+                Q=np.pi * f0_init * self.tau_known,
+                success=False,
+                used_fallback=True,
+                message=f"NLS tau-known fit failed: {res.message}",
+                nfev=res.nfev,
+            )
+
+        _, f_hat, _, _ = res.x
+        if not self._frequency_sanity_passes(float(f_hat), f0_init, fs):
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "nls_sanity_check_failed",
+                    extra={
+                        "event": "nls_sanity_check_failed",
+                        "f_hat": float(f_hat),
+                        "f0_init": float(f0_init),
+                        "fs": float(fs),
+                    },
+                )
+            return EstimationResult(
+                f=f0_init,
+                tau=self.tau_known,
+                Q=np.pi * f0_init * self.tau_known,
+                success=False,
+                used_fallback=True,
+                message="NLS tau-known fit failed frequency sanity check",
+                nfev=res.nfev,
+            )
+
+        return EstimationResult(
+            f=float(f_hat),
+            tau=float(self.tau_known),
+            Q=float(np.pi * f_hat * self.tau_known),
+            success=True,
+            used_fallback=False,
+            message=res.message,
+            nfev=res.nfev,
+        )
+
+    def _estimate_unknown_tau_full(
+        self,
+        x: np.ndarray,
+        fs: float,
+        initial_params: tuple,
+        **kwargs,
+    ) -> EstimationResult:
+        """Estimate frequency and tau jointly with NLS."""
+        N = len(x)
+        t = np.arange(N) / fs
+        f0_init, phi0_init, A0_init, c0 = _sanitize_initial_parameters(x, fs, initial_params)
+
+        if not _has_resolved_ac_content(x):
+            return EstimationResult(
+                f=f0_init,
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message="Signal has no resolved AC content after demeaning",
+                nfev=0,
+            )
+        tau_seed = kwargs.get("tau_init")
+        if tau_seed is None:
+            tau_seed = _estimate_initial_tau_from_envelope(x, t)
+        tau_init, tau_lower, tau_upper = _sanitize_tau_guess(tau_seed, t)
+
+        def residuals(p):
+            A0, f, phi, tau, c = p
+            return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
+
+        df = fs / N
+        f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
+        f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
+        amp_upper = max(10.0 * A0_init, _amplitude_floor(x) * 10.0)
+
+        ls_kwargs = {
+            "method": "trf",
+            "verbose": 0,
+            "ftol": kwargs.get("ftol", 1e-8),
+            "xtol": kwargs.get("xtol", 1e-8),
+            "gtol": kwargs.get("gtol", 1e-8),
+            "max_nfev": kwargs.get("max_nfev", 500),
+        }
+        res = least_squares(
+            residuals,
+            x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
+            bounds=(
+                [0.0, f_low, -np.pi, tau_lower, -np.inf],
+                [amp_upper, f_high, np.pi, tau_upper, np.inf],
+            ),
+            **ls_kwargs,
+        )
+
+        if not res.success:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "nls_full_estimation_failed",
+                    extra={
+                        "event": "nls_full_estimation_failed",
+                        "method": "nls_tau_unknown",
+                        "fit_message": res.message,
+                        "nfev": res.nfev,
+                    },
+                )
+            return EstimationResult(
+                f=f0_init,
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message=f"NLS tau-unknown fit failed: {res.message}",
+                nfev=res.nfev,
+            )
+
+        _, f_hat, _, tau_hat, _ = res.x
+
+        if not self._frequency_sanity_passes(float(f_hat), f0_init, fs):
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "nls_full_sanity_check_failed",
+                    extra={
+                        "event": "nls_full_sanity_check_failed",
+                        "f_hat": float(f_hat),
+                        "f0_init": float(f0_init),
+                        "fs": float(fs),
+                    },
+                )
+            return EstimationResult(
+                f=f0_init,
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message="NLS tau-unknown fit failed frequency sanity check",
+                nfev=res.nfev,
+            )
+
+        if not np.isfinite(tau_hat) or tau_hat <= 0 or tau_hat < tau_lower or tau_hat > tau_upper:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "nls_full_tau_sanity_check_failed",
+                    extra={
+                        "event": "nls_full_tau_sanity_check_failed",
+                        "tau_hat": float(tau_hat),
+                        "tau_init": float(tau_init),
+                        "t_max": float(t[-1]),
+                    },
+                )
+            return EstimationResult(
+                f=float(f_hat),
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message="NLS tau-unknown fit failed tau sanity check",
+                nfev=res.nfev,
+            )
+
+        return EstimationResult(
+            f=float(f_hat),
+            tau=float(tau_hat),
+            Q=float(np.pi * f_hat * tau_hat),
+            success=True,
+            used_fallback=False,
+            message=res.message,
+            nfev=res.nfev,
+        )
 
     def estimate(self, x: np.ndarray, fs: float, **kwargs) -> float:
         """
@@ -333,129 +645,19 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         """
         _validate_signal_input(x)
         _validate_fs(fs)
-        N = len(x)
-        t = np.arange(N) / fs
-
-        # Get initial parameter estimates (use cached if provided)
+        fit_kwargs = dict(kwargs)
         initial_params = kwargs.get("initial_params")
-        if initial_params is not None:
-            f0_init, phi0_init, A0_init, c0 = initial_params
-        else:
-            f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
-
+        fit_kwargs.pop("initial_params", None)
         if self.tau_known is not None:
-            # Known tau: estimate (A0, f, phi, c)
-            def residuals(p):
-                A0, f, phi, c = p
-                return (
-                    A0 * np.exp(-t / self.tau_known) * np.cos(2.0 * np.pi * f * t + phi) + c
-                ) - x
-
-            # Tighter frequency bounds
-            df = fs / N
-            f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
-            f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
-
-            lb = [0.0, f_low, -np.pi, -np.inf]
-            ub = [10.0 * A0_init, f_high, np.pi, np.inf]
-
-            ls_kwargs = {
-                "method": "trf",
-                "verbose": 0,
-                "ftol": kwargs.get("ftol", 1e-8),
-                "xtol": kwargs.get("xtol", 1e-8),
-                "gtol": kwargs.get("gtol", 1e-8),
-                "max_nfev": kwargs.get("max_nfev", 500),
-            }
-            res = least_squares(
-                residuals,
-                x0=np.array([A0_init, f0_init, phi0_init, c0]),
-                bounds=(lb, ub),
-                **ls_kwargs,
-            )
-
-            if not res.success:
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        "nls_estimation_failed",
-                        extra={
-                            "event": "nls_estimation_failed",
-                            "method": "nls_tau_known",
-                            "fit_message": res.message,
-                            "nfev": res.nfev,
-                        },
-                    )
-                return f0_init
-
-            _, f_hat, _, _ = res.x
+            if initial_params is None:
+                initial_params = _estimate_initial_parameters_from_dft(x, fs)
+            result = self._estimate_known_tau_full(x, fs, initial_params, **fit_kwargs)
         else:
-            # Unknown tau: estimate (A0, f, phi, tau, c)
-            tau_init = kwargs.get("tau_init")
-            if tau_init is None:
-                tau_init = _estimate_initial_tau_from_envelope(x, t)
+            if initial_params is None:
+                initial_params = _estimate_initial_parameters_from_dft(x, fs)
+            result = self._estimate_unknown_tau_full(x, fs, initial_params, **fit_kwargs)
 
-            def residuals(p):
-                A0, f, phi, tau, c = p
-                return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
-
-            df = fs / N
-            f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
-            f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
-
-            lb = [0.0, f_low, -np.pi, t[1], -np.inf]
-            ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t[-1], np.inf]
-            # Extend tau bounds if tau_init is provided and outside default range
-            tau_ub_default = 10.0 * t[-1]
-            if tau_init > tau_ub_default:
-                ub[3] = max(ub[3], tau_init * 1.1)
-            if tau_init < lb[3]:
-                lb[3] = max(t[1], min(lb[3], tau_init * 0.9))
-
-            ls_kwargs = {
-                "method": "trf",
-                "verbose": 0,
-                "ftol": kwargs.get("ftol", 1e-8),
-                "xtol": kwargs.get("xtol", 1e-8),
-                "gtol": kwargs.get("gtol", 1e-8),
-                "max_nfev": kwargs.get("max_nfev", 500),
-            }
-            res = least_squares(
-                residuals,
-                x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
-                bounds=(lb, ub),
-                **ls_kwargs,
-            )
-
-            if not res.success:
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        "nls_estimation_failed",
-                        extra={
-                            "event": "nls_estimation_failed",
-                            "method": "nls_tau_unknown",
-                            "fit_message": res.message,
-                            "nfev": res.nfev,
-                        },
-                    )
-                return f0_init
-
-            _, f_hat, _, _, _ = res.x
-
-        # Sanity check
-        if f_hat < 0 or f_hat > 0.5 * fs or abs(f_hat - f0_init) > 0.5 * f0_init:
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(
-                    "nls_sanity_check_failed",
-                    extra={
-                        "event": "nls_sanity_check_failed",
-                        "f_hat": float(f_hat),
-                        "f0_init": float(f0_init),
-                        "fs": float(fs),
-                    },
-                )
-            return f0_init
-
-        return float(f_hat)
+        return float(result.f)
 
     def estimate_full(self, x: np.ndarray, fs: float, **kwargs) -> EstimationResult:
         """
@@ -488,108 +690,15 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         """
         _validate_signal_input(x)
         _validate_fs(fs)
-        N = len(x)
-        t = np.arange(N) / fs
-
-        # Get initial parameter estimates (use cached if provided)
+        fit_kwargs = dict(kwargs)
         initial_params = kwargs.get("initial_params")
-        if initial_params is not None:
-            f0_init, phi0_init, A0_init, c0 = initial_params
-        else:
-            f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
+        fit_kwargs.pop("initial_params", None)
+        if initial_params is None:
+            initial_params = _estimate_initial_parameters_from_dft(x, fs)
 
         if self.tau_known is not None:
-            # Known tau: only estimate frequency, use known tau
-            f_hat = self.estimate(x, fs, **kwargs)
-            tau_hat = self.tau_known
-            Q_hat = np.pi * f_hat * tau_hat
-            return EstimationResult(f=f_hat, tau=tau_hat, Q=Q_hat)
-        else:
-            # Unknown tau: estimate (A0, f, phi, tau, c) and extract both
-            tau_init = kwargs.get("tau_init")
-            if tau_init is None:
-                tau_init = _estimate_initial_tau_from_envelope(x, t)
-
-            def residuals(p):
-                A0, f, phi, tau, c = p
-                return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
-
-            df = fs / N
-            f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
-            f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
-
-            lb = [0.0, f_low, -np.pi, t[1], -np.inf]
-            ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t[-1], np.inf]
-            # Extend tau bounds if tau_init is provided and outside default range
-            tau_ub_default = 10.0 * t[-1]
-            if tau_init > tau_ub_default:
-                ub[3] = max(ub[3], tau_init * 1.1)
-            if tau_init < lb[3]:
-                lb[3] = max(t[1], min(lb[3], tau_init * 0.9))
-
-            ls_kwargs = {
-                "method": "trf",
-                "verbose": 0,
-                "ftol": kwargs.get("ftol", 1e-8),
-                "xtol": kwargs.get("xtol", 1e-8),
-                "gtol": kwargs.get("gtol", 1e-8),
-                "max_nfev": kwargs.get("max_nfev", 500),
-            }
-            res = least_squares(
-                residuals,
-                x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
-                bounds=(lb, ub),
-                **ls_kwargs,
-            )
-
-            if not res.success:
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        "nls_full_estimation_failed",
-                        extra={
-                            "event": "nls_full_estimation_failed",
-                            "method": "nls_tau_unknown",
-                            "fit_message": res.message,
-                            "nfev": res.nfev,
-                        },
-                    )
-                # Fallback: return frequency only
-                f_hat = f0_init
-                return EstimationResult(f=f_hat, tau=None, Q=None)
-
-            _, f_hat, _, tau_hat, _ = res.x
-
-            # Sanity checks
-            if f_hat < 0 or f_hat > 0.5 * fs or abs(f_hat - f0_init) > 0.5 * f0_init:
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        "nls_full_sanity_check_failed",
-                        extra={
-                            "event": "nls_full_sanity_check_failed",
-                            "f_hat": float(f_hat),
-                            "f0_init": float(f0_init),
-                            "fs": float(fs),
-                        },
-                    )
-                f_hat = f0_init
-                return EstimationResult(f=f_hat, tau=None, Q=None)
-
-            tau_ub_used = max(10.0 * t[-1], tau_init * 1.1) if tau_init else 10.0 * t[-1]
-            if tau_hat <= 0 or tau_hat > tau_ub_used or tau_hat < t[1]:
-                if logger.isEnabledFor(logging.WARNING):
-                    logger.warning(
-                        "nls_full_tau_sanity_check_failed",
-                        extra={
-                            "event": "nls_full_tau_sanity_check_failed",
-                            "tau_hat": float(tau_hat),
-                            "tau_init": float(tau_init),
-                            "t_max": float(t[-1]),
-                        },
-                    )
-                return EstimationResult(f=f_hat, tau=None, Q=None)
-
-            Q_hat = np.pi * f_hat * tau_hat
-            return EstimationResult(f=float(f_hat), tau=float(tau_hat), Q=float(Q_hat))
+            return self._estimate_known_tau_full(x, fs, initial_params, **fit_kwargs)
+        return self._estimate_unknown_tau_full(x, fs, initial_params, **fit_kwargs)
 
 
 class DFTFrequencyEstimator(FrequencyEstimator):
@@ -633,6 +742,100 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         self.kaiser_beta = kaiser_beta
         self.f_min = f_min
 
+    def _window_values(self, N: int) -> np.ndarray:
+        """Return the configured analysis window."""
+        if self.window == "kaiser":
+            return kaiser(N, self.kaiser_beta)
+        if self.window == "hann":
+            return np.hanning(N)
+        if self.window == "rect":
+            return np.ones(N)
+        if self.window == "blackman":
+            return np.blackman(N)
+        raise ValueError(f"Unknown window: {self.window}")
+
+    def _estimate_frequency_result(self, x: np.ndarray, fs: float) -> EstimationResult:
+        """Estimate frequency and expose whether the Lorentzian interpolation succeeded."""
+        N = len(x)
+        if not _has_resolved_ac_content(x):
+            f_fallback = fs / max(N, 2)
+            return EstimationResult(
+                f=float(f_fallback),
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message="Signal has no resolved AC content after demeaning",
+                nfev=0,
+            )
+        x = x - np.mean(x)
+        w = self._window_values(N)
+        xw = x * w
+
+        if self.use_zeropad:
+            N_pad = self.pad_factor * N
+            xw_pad = np.zeros(N_pad, dtype=xw.dtype)
+            xw_pad[:N] = xw
+            N_dft = N_pad
+        else:
+            xw_pad = xw
+            N_dft = N
+
+        X = np.fft.rfft(xw_pad)
+        P = np.abs(X) ** 2
+
+        k_min = 1
+        if self.f_min > 0:
+            k_min = max(1, int(np.ceil(self.f_min * N_dft / fs)))
+        if k_min >= len(P):
+            k_min = max(1, len(P) - 1)
+        k = int(np.argmax(P[k_min:]) + k_min)
+
+        if k <= 0 or k >= len(P) - 1:
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "dft_peak_at_edge",
+                    extra={
+                        "event": "dft_peak_at_edge",
+                        "k": int(k),
+                        "n_bins": len(P),
+                    },
+                )
+            f_hat = float(k * fs / N_dft)
+            return EstimationResult(
+                f=f_hat,
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message="DFT peak occurred at the FFT edge; skipping Lorentzian interpolation",
+                nfev=None,
+            )
+
+        delta = _fit_lorentzian_to_peak(P, k, fs, N_dft, n_points=self.lorentzian_points)
+        f_hat = float((k + delta) * fs / N_dft)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "dft_estimated",
+                extra={
+                    "event": "dft_estimated",
+                    "f_hat": float(f_hat),
+                    "k": int(k),
+                    "delta": float(delta),
+                },
+            )
+
+        return EstimationResult(
+            f=f_hat,
+            tau=None,
+            Q=None,
+            success=True,
+            used_fallback=False,
+            message="DFT frequency estimated via Lorentzian-interpolated FFT peak",
+            nfev=None,
+        )
+
     def estimate(self, x: np.ndarray, fs: float, **kwargs) -> float:
         """
         Estimate frequency using DFT with Lorentzian fitting.
@@ -658,79 +861,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         """
         _validate_signal_input(x)
         _validate_fs(fs)
-        N = len(x)
-
-        # Remove mean to avoid DC leakage dominating low-frequency bins
-        x = x - np.mean(x)
-
-        # Apply window
-        if self.window == "kaiser":
-            w = kaiser(N, self.kaiser_beta)
-        elif self.window == "hann":
-            w = np.hanning(N)
-        elif self.window == "rect":
-            w = np.ones(N)
-        elif self.window == "blackman":
-            w = np.blackman(N)
-        else:
-            raise ValueError(f"Unknown window: {self.window}")
-
-        xw = x * w
-
-        # Zero-padding for finer frequency grid
-        if self.use_zeropad:
-            N_pad = self.pad_factor * N
-            xw_pad = np.zeros(N_pad, dtype=xw.dtype)
-            xw_pad[:N] = xw
-            N_dft = N_pad
-        else:
-            xw_pad = xw
-            N_dft = N
-
-        # Compute one-sided DFT
-        X = np.fft.rfft(xw_pad)
-        P = np.abs(X) ** 2
-
-        # Find peak bin (skip DC k=0; optionally exclude bins below f_min)
-        # For phase/cumulative data, a ramp dominates low frequencies; f_min
-        # excludes those bins so we find the actual oscillation peak (e.g. 7-8 Hz)
-        k_min = 1  # Skip DC
-        if self.f_min > 0:
-            k_min = max(1, int(np.ceil(self.f_min * N_dft / fs)))
-        if k_min >= len(P):
-            k_min = max(1, len(P) - 1)
-        k = int(np.argmax(P[k_min:]) + k_min)
-
-        # Guard against edges
-        if k <= 0 or k >= len(P) - 1:
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(
-                    "dft_peak_at_edge",
-                    extra={
-                        "event": "dft_peak_at_edge",
-                        "k": int(k),
-                        "n_bins": len(P),
-                    },
-                )
-            return float(k * fs / N_dft)
-
-        # Fit Lorentzian to power spectrum around peak
-        delta = _fit_lorentzian_to_peak(P, k, fs, N_dft, n_points=self.lorentzian_points)
-
-        f_hat = (k + delta) * fs / N_dft
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "dft_estimated",
-                extra={
-                    "event": "dft_estimated",
-                    "f_hat": float(f_hat),
-                    "k": int(k),
-                    "delta": float(delta),
-                },
-            )
-
-        return float(f_hat)
+        return float(self._estimate_frequency_result(x, fs).f)
 
     def estimate_full(self, x: np.ndarray, fs: float, **kwargs) -> EstimationResult:
         """
@@ -763,7 +894,8 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         _validate_signal_input(x)
         _validate_fs(fs)
         # Step 1: Estimate frequency via DFT
-        f_hat = self.estimate(x, fs, **kwargs)
+        frequency_result = self._estimate_frequency_result(x, fs)
+        f_hat = frequency_result.f
 
         # Step 2: Estimate tau via NLS with fixed frequency
         N = len(x)
@@ -775,25 +907,23 @@ class DFTFrequencyEstimator(FrequencyEstimator):
             _, phi0_init, A0_init, c0 = initial_params
         else:
             _, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
+        _, phi0_init, A0_init, c0 = _sanitize_initial_parameters(
+            x, fs, (f_hat, phi0_init, A0_init, c0)
+        )
 
         # Initial tau guess
-        tau_init = kwargs.get("tau_init")
-        if tau_init is None:
-            tau_init = _estimate_initial_tau_from_envelope(x, t)
+        tau_seed = kwargs.get("tau_init")
+        if tau_seed is None:
+            tau_seed = _estimate_initial_tau_from_envelope(x, t)
+        tau_init, tau_lower, tau_upper = _sanitize_tau_guess(tau_seed, t)
 
         # NLS fit with fixed frequency: estimate (A0, phi, tau, c)
         def residuals(p):
             A0, phi, tau, c = p
             return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f_hat * t + phi) + c) - x
 
-        lb = [0.0, -np.pi, t[1], -np.inf]
-        ub = [10.0 * A0_init, np.pi, 10.0 * t[-1], np.inf]
-        # Extend tau bounds if tau_init is provided and outside default range
-        tau_ub_default = 10.0 * t[-1]
-        if tau_init > tau_ub_default:
-            ub[2] = max(ub[2], tau_init * 1.1)
-        if tau_init < lb[2]:
-            lb[2] = max(t[1], min(lb[2], tau_init * 0.9))
+        lb = [0.0, -np.pi, tau_lower, -np.inf]
+        ub = [max(10.0 * A0_init, _amplitude_floor(x) * 10.0), np.pi, tau_upper, np.inf]
 
         ls_kwargs = {
             "method": "trf",
@@ -820,13 +950,20 @@ class DFTFrequencyEstimator(FrequencyEstimator):
                         "nfev": res.nfev,
                     },
                 )
-            return EstimationResult(f=f_hat, tau=None, Q=None)
+            return EstimationResult(
+                f=f_hat,
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message=f"DFT tau fit failed: {res.message}",
+                nfev=res.nfev,
+            )
 
         _, _, tau_hat, _ = res.x
 
         # Sanity check on tau
-        tau_ub_used = max(10.0 * t[-1], tau_init * 1.1) if tau_init else 10.0 * t[-1]
-        if tau_hat <= 0 or tau_hat > tau_ub_used or tau_hat < t[1]:
+        if tau_hat <= 0 or tau_hat > tau_upper or tau_hat < tau_lower:
             if logger.isEnabledFor(logging.WARNING):
                 logger.warning(
                     "dft_full_tau_sanity_check_failed",
@@ -837,7 +974,25 @@ class DFTFrequencyEstimator(FrequencyEstimator):
                         "t_max": float(t[-1]),
                     },
                 )
-            return EstimationResult(f=f_hat, tau=None, Q=None)
+            return EstimationResult(
+                f=f_hat,
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=True,
+                message="DFT tau fit failed tau sanity check",
+                nfev=res.nfev,
+            )
 
         Q_hat = np.pi * f_hat * tau_hat
-        return EstimationResult(f=float(f_hat), tau=float(tau_hat), Q=float(Q_hat))
+        return EstimationResult(
+            f=float(f_hat),
+            tau=float(tau_hat),
+            Q=float(Q_hat),
+            success=frequency_result.success,
+            used_fallback=frequency_result.used_fallback,
+            message=frequency_result.message
+            if frequency_result.success
+            else frequency_result.message,
+            nfev=res.nfev,
+        )

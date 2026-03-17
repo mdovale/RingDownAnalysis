@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -17,9 +18,23 @@ from .estimators import (
     NLSFrequencyEstimator,
     _estimate_initial_parameters_from_dft,
     _estimate_initial_tau_from_envelope,
+    _sanitize_initial_parameters,
+    _sanitize_tau_guess,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class NoiseEstimate(NamedTuple):
+    """Noise and amplitude estimates for plug-in uncertainty calculations."""
+
+    A0: float
+    sigma: float
+    sigma_mle: float
+    noise_dof: int
+    success: bool
+    method: str
+    message: str | None = None
 
 
 def _parse_array_input(
@@ -74,8 +89,51 @@ def _parse_array_input(
         raise ValueError(f"t and data must have same length, got {len(t_arr)} and {len(data_arr)}")
     if len(t_arr) < 2:
         raise ValueError("At least 2 samples required for analysis")
+    if not np.all(np.isfinite(data_arr)):
+        raise ValueError("Signal data must contain only finite values")
 
     return t_arr, data_arr
+
+
+def _validate_uniform_timebase(
+    t: np.ndarray,
+    *,
+    rtol: float = 5e-3,
+    atol: float = 1e-12,
+) -> tuple[np.ndarray, float]:
+    """
+    Validate a strictly increasing, approximately uniform time base.
+
+    Nonuniform timestamps are intentionally unsupported because the downstream
+    estimators assume a fixed sample interval throughout the pipeline.
+    """
+    t_arr = np.asarray(t, dtype=np.float64)
+    if t_arr.ndim != 1:
+        raise ValueError(f"Time array must be 1-dimensional, got shape {t_arr.shape}")
+    if len(t_arr) < 2:
+        raise ValueError("At least 2 samples required for analysis")
+    if not np.all(np.isfinite(t_arr)):
+        raise ValueError("Time array must contain only finite values")
+
+    t_norm = t_arr - t_arr[0]
+    dt = np.diff(t_norm)
+    if not np.all(np.isfinite(dt)):
+        raise ValueError("Time array differences must be finite")
+    if np.any(dt <= 0):
+        raise ValueError("Time array must be strictly increasing with no duplicate timestamps")
+
+    dt_ref = float(np.median(dt))
+    if not np.isfinite(dt_ref) or dt_ref <= 0:
+        raise ValueError("Could not determine a valid sampling interval from the time array")
+
+    if not np.allclose(dt, dt_ref, rtol=rtol, atol=max(atol, abs(dt_ref) * rtol)):
+        max_rel_dev = float(np.max(np.abs(dt - dt_ref) / dt_ref))
+        raise ValueError(
+            "Nonuniform timestamps are not supported; "
+            f"max relative sample-interval deviation was {max_rel_dev:.3e}"
+        )
+
+    return t_norm, float(1.0 / dt_ref)
 
 
 class RingDownAnalyzer:
@@ -153,13 +211,15 @@ class RingDownAnalyzer:
 
         # Get initial parameter estimates (use cached if provided)
         if initial_params is not None:
-            f0_init, phi0_init, A0_init, c0 = initial_params
+            f0_init, phi0_init, A0_init, c0 = _sanitize_initial_parameters(data, fs, initial_params)
         else:
             f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(data, fs)
 
         # Initial tau guess
-        if tau_init is None:
-            tau_init = _estimate_initial_tau_from_envelope(data, t_norm)
+        tau_seed = tau_init
+        if tau_seed is None:
+            tau_seed = _estimate_initial_tau_from_envelope(data, t_norm)
+        tau_init_fit, tau_lower, tau_upper = _sanitize_tau_guess(tau_seed, t_norm)
 
         # NLS fit to estimate tau: fit (A0, f, phi, tau, c)
         def residuals_tau(p):
@@ -170,14 +230,9 @@ class RingDownAnalyzer:
         f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
         f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
 
-        lb = [0.0, f_low, -np.pi, t_norm[1], -np.inf]
-        ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t_norm[-1], np.inf]
-        # Extend tau bounds if tau_init is provided and outside default range
-        tau_ub_default = 10.0 * t_norm[-1]
-        if tau_init is not None and tau_init > tau_ub_default:
-            ub[3] = max(ub[3], tau_init * 1.1)  # Allow tau above default upper bound
-        if tau_init is not None and tau_init < lb[3]:
-            lb[3] = max(t_norm[1], min(lb[3], tau_init * 0.9))
+        amp_upper = max(10.0 * A0_init, np.finfo(np.float64).eps * 10.0)
+        lb = [0.0, f_low, -np.pi, tau_lower, -np.inf]
+        ub = [amp_upper, f_high, np.pi, tau_upper, np.inf]
 
         ls_kwargs: dict = {"method": "trf", "verbose": 0}
         if max_nfev is not None:
@@ -199,50 +254,53 @@ class RingDownAnalyzer:
 
         res_tau = least_squares(
             residuals_tau,
-            x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
+            x0=np.array([A0_init, f0_init, phi0_init, tau_init_fit, c0]),
             bounds=(lb, ub),
             **ls_kwargs,
         )
 
         if res_tau.success:
             _, _, _, tau_est, _ = res_tau.x
-            # Sanity check (use extended tau_ub if tau_init was large)
-            tau_ub = ub[3]  # Already extended above if tau_init was outside default
-            if tau_est <= 0 or not np.isfinite(tau_est) or tau_est > tau_ub or tau_est < t_norm[1]:
+            if (
+                tau_est <= 0
+                or not np.isfinite(tau_est)
+                or tau_est > tau_upper
+                or tau_est < tau_lower
+            ):
                 if logger.isEnabledFor(logging.WARNING):
                     logger.warning(
                         "tau_sanity_check_failed",
                         extra={
                             "event": "tau_sanity_check_failed",
                             "tau_est": float(tau_est),
-                            "tau_init": float(tau_init),
+                            "tau_init": float(tau_init_fit),
                             "t_max": float(t_norm[-1]),
                         },
                     )
-                return tau_init
+                return tau_init_fit
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "tau_estimated",
                     extra={
                         "event": "tau_estimated",
                         "tau_est": float(tau_est),
-                        "tau_init": float(tau_init),
+                        "tau_init": float(tau_init_fit),
                         "nfev": res_tau.nfev,
                     },
                 )
-            return tau_est
-        else:
-            if logger.isEnabledFor(logging.WARNING):
-                logger.warning(
-                    "tau_estimation_failed",
-                    extra={
-                        "event": "tau_estimation_failed",
-                        "tau_init": float(tau_init),
-                        "fit_message": res_tau.message,
-                        "nfev": res_tau.nfev,
-                    },
-                )
-            return tau_init
+            return float(tau_est)
+
+        if logger.isEnabledFor(logging.WARNING):
+            logger.warning(
+                "tau_estimation_failed",
+                extra={
+                    "event": "tau_estimation_failed",
+                    "tau_init": float(tau_init_fit),
+                    "fit_message": res_tau.message,
+                    "nfev": res_tau.nfev,
+                },
+            )
+        return tau_init_fit
 
     def crop_data_to_tau(
         self,
@@ -311,17 +369,16 @@ class RingDownAnalyzer:
         self,
         data_cropped: np.ndarray,
         t_crop: np.ndarray,
-        tau_est: float,
-        fs: float,
-        initial_params: tuple | None = None,
-        *,
-        max_nfev: int | None = None,
-        ftol: float | None = None,
-        xtol: float | None = None,
-        gtol: float | None = None,
-    ) -> tuple[float, float]:
+        tau_model: float,
+        f_model: float,
+    ) -> NoiseEstimate:
         """
-        Estimate A0 (initial amplitude) and sigma (noise std) from cropped data.
+        Estimate amplitude and noise for plug-in uncertainty calculations.
+
+        The uncertainty model fixes the analyzed frequency and decay constant,
+        then solves for the nuisance parameters in a linear least-squares model.
+        Noise is reported with a degrees-of-freedom correction:
+        sigma = sqrt(RSS / (N - p)) with p = 3 nuisance parameters.
 
         Parameters:
         -----------
@@ -329,101 +386,105 @@ class RingDownAnalyzer:
             Cropped signal data
         t_crop : np.ndarray
             Cropped time array
-        tau_est : float
-            Estimated tau value in seconds
-        fs : float
-            Sampling frequency (Hz)
-        initial_params : tuple, optional
-            (f0_init, phi0_init, A0_init, c0) to avoid redundant DFT. If None, estimated from data.
-        max_nfev : int, optional
-            Maximum number of function evaluations for the fit. Default 100.
-        ftol, xtol, gtol : float, optional
-            Convergence tolerances for least_squares. Default ftol 1e-6; xtol/gtol use scipy defaults.
+        tau_model : float
+            Decay constant associated with the analyzed cropped-stage model.
+        f_model : float
+            Frequency associated with the analyzed cropped-stage model.
 
         Returns:
         --------
-        (A0_est, sigma_est) : tuple
-            Estimated A0 and sigma
+        NoiseEstimate
+            Estimated amplitude and noise summary
         """
         N_crop = len(data_cropped)
         t_crop_norm = t_crop - t_crop[0]
+        if N_crop < 4:
+            raise ValueError("At least 4 cropped samples are required for noise estimation")
+        if not np.isfinite(tau_model) or tau_model <= 0:
+            raise ValueError(f"tau_model must be positive and finite, got {tau_model}")
+        if not np.isfinite(f_model) or f_model < 0:
+            raise ValueError(f"f_model must be non-negative and finite, got {f_model}")
 
-        # Initial estimate from first portion
-        n_init = min(1000, N_crop // 10)
-        A0_est = np.sqrt(2.0) * np.std(data_cropped[:n_init])
-
-        # Fit model to get residuals for noise estimation
-        def model_residuals(p):
-            A0, f, phi, c = p
-            return (
-                A0 * np.exp(-t_crop_norm / tau_est) * np.cos(2.0 * np.pi * f * t_crop_norm + phi)
-                + c
-            ) - data_cropped
-
-        # Get initial guesses (use cached if provided)
-        if initial_params is not None:
-            f0_init, phi0_init, A0_init, c0 = initial_params
-        else:
-            f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(
-                data_cropped, fs
-            )
-
-        # Quick fit to get residuals
-        df = fs / N_crop
-        f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
-        f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
-
-        ls_kwargs: dict = {"method": "trf", "verbose": 0}
-        if max_nfev is not None:
-            ls_kwargs["max_nfev"] = max_nfev
-        else:
-            ls_kwargs["max_nfev"] = 100
-        if ftol is not None:
-            ls_kwargs["ftol"] = ftol
-        else:
-            ls_kwargs["ftol"] = 1e-6
-        if xtol is not None:
-            ls_kwargs["xtol"] = xtol
-        if gtol is not None:
-            ls_kwargs["gtol"] = gtol
-
-        res_fit = least_squares(
-            model_residuals,
-            x0=np.array([A0_init, f0_init, phi0_init, c0]),
-            bounds=([0.0, f_low, -np.pi, -np.inf], [10.0 * A0_init, f_high, np.pi, np.inf]),
-            **ls_kwargs,
+        exp_term = np.exp(-t_crop_norm / tau_model)
+        omega_t = 2.0 * np.pi * f_model * t_crop_norm
+        design = np.column_stack(
+            [
+                exp_term * np.cos(omega_t),
+                exp_term * np.sin(omega_t),
+                np.ones_like(t_crop_norm),
+            ]
         )
 
-        if res_fit.success:
-            residuals = res_fit.fun
-            sigma_est = np.std(residuals)
-            A0_est = res_fit.x[0]
+        try:
+            coeffs, _, rank, _ = np.linalg.lstsq(design, data_cropped, rcond=None)
+            if rank < design.shape[1]:
+                raise np.linalg.LinAlgError("Design matrix is rank-deficient")
+
+            fitted = design @ coeffs
+            residuals = data_cropped - fitted
+            rss = float(np.sum(residuals**2))
+            dof = N_crop - design.shape[1]
+            if dof <= 0:
+                raise ValueError("Noise-model degrees of freedom must be positive")
+
+            a_cos, b_sin, _ = coeffs
+            A0_est = float(np.hypot(a_cos, b_sin))
+            sigma_mle = float(np.sqrt(rss / N_crop))
+            sigma_est = float(np.sqrt(rss / dof))
+
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "noise_parameters_estimated",
                     extra={
                         "event": "noise_parameters_estimated",
-                        "A0_est": float(A0_est),
-                        "sigma_est": float(sigma_est),
-                        "nfev": res_fit.nfev,
+                        "A0_est": A0_est,
+                        "sigma_est": sigma_est,
+                        "sigma_mle": sigma_mle,
+                        "noise_dof": int(dof),
                     },
                 )
-        else:
-            # Fallback: estimate noise from tail
+
+            return NoiseEstimate(
+                A0=max(A0_est, np.finfo(np.float64).eps),
+                sigma=sigma_est,
+                sigma_mle=sigma_mle,
+                noise_dof=int(dof),
+                success=True,
+                method="fixed_frequency_tau_linear_lstsq",
+                message=None,
+            )
+        except (np.linalg.LinAlgError, ValueError) as exc:
             if logger.isEnabledFor(logging.WARNING):
                 logger.warning(
                     "noise_estimation_fallback",
                     extra={
                         "event": "noise_estimation_fallback",
-                        "fit_message": res_fit.message,
-                        "nfev": res_fit.nfev,
+                        "error_type": type(exc).__name__,
+                        "error_msg": str(exc),
                     },
                 )
-            tail_start = max(int(0.8 * len(data_cropped)), len(data_cropped) - 1000)
-            sigma_est = np.std(data_cropped[tail_start:])
-            A0_est = np.sqrt(2.0) * np.std(data_cropped[:n_init])
 
-        return A0_est, sigma_est
+            tail_start = max(int(0.8 * N_crop), N_crop - min(1000, N_crop))
+            tail = data_cropped[tail_start:]
+            if len(tail) < 2:
+                tail = data_cropped
+            sigma_est = float(np.std(tail, ddof=1)) if len(tail) > 1 else np.inf
+            sigma_mle = float(np.std(tail, ddof=0)) if len(tail) > 0 else np.inf
+            n_init = max(1, min(1000, max(1, N_crop // 10)))
+            A0_est = max(
+                float(np.sqrt(2.0) * np.std(data_cropped[:n_init])),
+                np.finfo(np.float64).eps,
+            )
+            noise_dof = max(len(tail) - 1, 0)
+            return NoiseEstimate(
+                A0=A0_est,
+                sigma=sigma_est,
+                sigma_mle=sigma_mle,
+                noise_dof=int(noise_dof),
+                success=False,
+                method="tail_std_fallback",
+                message=str(exc),
+            )
 
     def _run_analysis_pipeline(
         self,
@@ -441,8 +502,8 @@ class RingDownAnalyzer:
     ) -> dict:
         """Run the full analysis pipeline on (t, data) arrays."""
         if initial_params is not None:
-            initial_params_full = initial_params
-            initial_params_cropped = initial_params
+            initial_params_full = _sanitize_initial_parameters(data, fs, initial_params)
+            initial_params_cropped = initial_params_full
         else:
             initial_params_full = _estimate_initial_parameters_from_dft(data, fs)
             initial_params_cropped = None  # Will compute after crop
@@ -480,8 +541,7 @@ class RingDownAnalyzer:
             fit_kwargs["xtol"] = xtol
         if gtol is not None:
             fit_kwargs["gtol"] = gtol
-        if tau_init is not None:
-            fit_kwargs["tau_init"] = tau_init
+        fit_kwargs["tau_init"] = tau_init if tau_init is not None else tau_est
 
         result_nls = self.nls_estimator.estimate_full(
             data_cropped,
@@ -501,22 +561,32 @@ class RingDownAnalyzer:
         Q_nls = result_nls.Q
         Q_dft = result_dft.Q
         tau_nls = result_nls.tau
-
-        A0_est, sigma_est = self.estimate_noise_parameters(
+        tau_dft = result_dft.tau
+        tau_model = tau_nls if tau_nls is not None else tau_dft if tau_dft is not None else tau_est
+        noise_estimate = self.estimate_noise_parameters(
             data_cropped,
             t_crop,
-            tau_est,
-            fs,
-            initial_params=initial_params_cropped,
-            max_nfev=max_nfev,
-            ftol=ftol,
-            xtol=xtol,
-            gtol=gtol,
+            tau_model,
+            f_nls,
         )
 
         N_crop = len(data_cropped)
-        crlb_var_f = self.crlb_calc.variance(A0_est, sigma_est, fs, N_crop, tau_est)
-        crlb_std_f = np.sqrt(crlb_var_f) if np.isfinite(crlb_var_f) else np.inf
+        plugin_crlb_var_f = self.crlb_calc.variance(
+            noise_estimate.A0,
+            noise_estimate.sigma,
+            fs,
+            N_crop,
+            tau_model,
+        )
+        plugin_crlb_std_f = (
+            float(np.sqrt(plugin_crlb_var_f)) if np.isfinite(plugin_crlb_var_f) else np.inf
+        )
+        uncertainty_valid = (
+            noise_estimate.success
+            and np.isfinite(plugin_crlb_std_f)
+            and plugin_crlb_std_f > 0
+            and result_nls.success
+        )
 
         return {
             "t": t,
@@ -527,13 +597,35 @@ class RingDownAnalyzer:
             "fs": fs,
             "tau_est": tau_est,
             "tau_nls": tau_nls,
+            "tau_dft": tau_dft,
+            "tau_model": tau_model,
             "f_nls": f_nls,
             "f_dft": f_dft,
             "Q_nls": Q_nls,
             "Q_dft": Q_dft,
-            "A0_est": A0_est,
-            "sigma_est": sigma_est,
-            "crlb_std_f": crlb_std_f,
+            "nls_success": result_nls.success,
+            "dft_success": result_dft.success,
+            "nls_used_fallback": result_nls.used_fallback,
+            "dft_used_fallback": result_dft.used_fallback,
+            "nls_message": result_nls.message,
+            "dft_message": result_dft.message,
+            "A0_est": noise_estimate.A0,
+            "sigma_est": noise_estimate.sigma,
+            "sigma_mle_est": noise_estimate.sigma_mle,
+            "noise_dof": noise_estimate.noise_dof,
+            "noise_estimation_success": noise_estimate.success,
+            "noise_estimation_method": noise_estimate.method,
+            "noise_estimation_message": noise_estimate.message,
+            "plugin_crlb_var_f": plugin_crlb_var_f,
+            "plugin_crlb_std_f": plugin_crlb_std_f,
+            "uncertainty_std_f": plugin_crlb_std_f,
+            "uncertainty_method": (
+                "plugin_crlb_known_tau_with_residual_dof_correction"
+                if uncertainty_valid
+                else "unavailable"
+            ),
+            "uncertainty_valid": uncertainty_valid,
+            "crlb_std_f": plugin_crlb_std_f,
             "N": len(t),
             "N_crop": len(t_crop),
             "T": t[-1],
@@ -607,8 +699,13 @@ class RingDownAnalyzer:
         t_arr, data_arr = _parse_array_input(
             t=t, data=data, fs=fs, time_col=time_col, data_col=data_col
         )
-
-        fs = 1.0 / np.mean(np.diff(t_arr))
+        if t is not None or hasattr(data, "iloc"):
+            t_arr, fs = _validate_uniform_timebase(t_arr)
+        else:
+            t_arr = t_arr - t_arr[0]
+            if fs is None or not np.isfinite(fs) or fs <= 0:
+                raise ValueError(f"Sampling frequency fs must be positive and finite, got {fs}")
+            fs = float(fs)
 
         if logger.isEnabledFor(logging.INFO):
             logger.info(
@@ -642,8 +739,8 @@ class RingDownAnalyzer:
                     "f_nls": float(result["f_nls"]),
                     "f_dft": float(result["f_dft"]),
                     "tau_est": float(result["tau_est"]),
-                    "crlb_std_f": float(result["crlb_std_f"])
-                    if np.isfinite(result["crlb_std_f"])
+                    "uncertainty_std_f": float(result["uncertainty_std_f"])
+                    if np.isfinite(result["uncertainty_std_f"])
                     else None,
                 },
             )
@@ -704,7 +801,7 @@ class RingDownAnalyzer:
             )
 
         t, data, V2, file_type = RingDownDataLoader.load(filepath)
-        fs = 1.0 / np.mean(np.diff(t))
+        t, fs = _validate_uniform_timebase(t)
 
         result = self._run_analysis_pipeline(
             t,
@@ -732,8 +829,8 @@ class RingDownAnalyzer:
                     "f_nls": float(result["f_nls"]),
                     "f_dft": float(result["f_dft"]),
                     "tau_est": float(result["tau_est"]),
-                    "crlb_std_f": float(result["crlb_std_f"])
-                    if np.isfinite(result["crlb_std_f"])
+                    "uncertainty_std_f": float(result["uncertainty_std_f"])
+                    if np.isfinite(result["uncertainty_std_f"])
                     else None,
                 },
             )

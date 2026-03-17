@@ -161,6 +161,14 @@ class TestCorrectness:
         # Should be in reasonable range (not exact due to windowing)
         assert 0.5 * tau_true < tau_est < 5.0 * tau_true
 
+    def test_estimate_tau_from_envelope_short_signal(self):
+        """Test short signals do not trigger divide-by-zero in the envelope heuristic."""
+        t = np.arange(8, dtype=float) / 100.0
+        x = np.cos(2 * np.pi * 5.0 * t)
+        tau_est = _estimate_initial_tau_from_envelope(x, t)
+        assert tau_est > 0
+        assert np.isfinite(tau_est)
+
     def test_fit_lorentzian_to_peak(self):
         """Test Lorentzian fitting to peak."""
         # Create a simple power spectrum with a peak

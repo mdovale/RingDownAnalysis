@@ -91,11 +91,13 @@ class TestRingDownAnalyzer:
         analyzer = RingDownAnalyzer()
         tau_est = analyzer.estimate_tau(data, t, fs)
         t_crop, data_crop = analyzer.crop_data_to_tau(t, data, tau_est, min_samples=100)
-        A0_est, sigma_est = analyzer.estimate_noise_parameters(data_crop, t_crop, tau_est, fs)
-        assert np.isfinite(A0_est)
-        assert np.isfinite(sigma_est)
-        assert A0_est > 0
-        assert sigma_est >= 0
+        noise = analyzer.estimate_noise_parameters(data_crop, t_crop, tau_est, 5.0)
+        assert np.isfinite(noise.A0)
+        assert np.isfinite(noise.sigma)
+        assert np.isfinite(noise.sigma_mle)
+        assert noise.A0 > 0
+        assert noise.sigma >= 0
+        assert noise.noise_dof > 0
 
     def test_analyze_file_csv_valid(self, tmp_csv_file):
         """Test analyze_file on valid CSV file."""
@@ -109,6 +111,10 @@ class TestRingDownAnalyzer:
         assert "f_nls" in result
         assert "f_dft" in result
         assert "crlb_std_f" in result
+        assert "plugin_crlb_std_f" in result
+        assert "uncertainty_std_f" in result
+        assert "tau_model" in result
+        assert "nls_success" in result
         assert "N" in result
         assert "N_crop" in result
         assert np.isfinite(result["f_nls"])
@@ -162,6 +168,7 @@ class TestRingDownAnalyzer:
         assert "f_nls" in result
         assert "f_dft" in result
         assert "crlb_std_f" in result
+        assert "uncertainty_valid" in result
         assert "filename" not in result
         assert np.isfinite(result["f_nls"])
         assert np.isfinite(result["f_dft"])
@@ -212,6 +219,42 @@ class TestRingDownAnalyzer:
         data = np.cos(np.linspace(0, 10 * np.pi, 50))
         with pytest.raises(ValueError, match="same length"):
             analyzer.analyze_array(t=t, data=data)
+
+    def test_analyze_array_nonuniform_time_raises(self, sample_ringdown_signal):
+        """Test analyze_array rejects nonuniform timestamps."""
+        t, data, _ = sample_ringdown_signal
+        t_bad = t.copy()
+        t_bad[100:] += np.linspace(0, 5e-2, len(t_bad) - 100)
+        analyzer = RingDownAnalyzer()
+        with pytest.raises(ValueError, match="Nonuniform timestamps are not supported"):
+            analyzer.analyze_array(t=t_bad, data=data)
+
+    def test_analyze_array_duplicate_timestamps_raises(self, sample_ringdown_signal):
+        """Test analyze_array rejects duplicate timestamps."""
+        t, data, _ = sample_ringdown_signal
+        t_bad = t.copy()
+        t_bad[20] = t_bad[19]
+        analyzer = RingDownAnalyzer()
+        with pytest.raises(ValueError, match="strictly increasing"):
+            analyzer.analyze_array(t=t_bad, data=data)
+
+    def test_analyze_array_descending_time_raises(self, sample_ringdown_signal):
+        """Test analyze_array rejects descending timestamps."""
+        t, data, _ = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        with pytest.raises(ValueError, match="strictly increasing"):
+            analyzer.analyze_array(t=t[::-1], data=data[::-1])
+
+    def test_analyze_array_reports_plugin_uncertainty_metadata(self, sample_ringdown_signal):
+        """Test analyze_array exposes explicit plug-in uncertainty fields."""
+        t, data, _ = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        result = analyzer.analyze_array(t=t, data=data)
+        assert result["tau_model"] > 0
+        assert result["plugin_crlb_std_f"] == result["uncertainty_std_f"]
+        assert result["crlb_std_f"] == result["uncertainty_std_f"]
+        assert result["uncertainty_method"].startswith("plugin_crlb")
+        assert result["noise_dof"] > 0
 
 
 class TestAnalyzerEdgeCases:

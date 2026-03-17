@@ -2,6 +2,8 @@
 Unit tests for frequency estimators.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -141,6 +143,34 @@ class TestNLSFrequencyEstimator:
         with pytest.raises(TypeError, match="numpy.ndarray"):
             estimator.estimate([1.0, 2.0, 3.0], 100.0)
 
+    def test_estimate_full_short_signal_no_zero_division(self):
+        """Test short signals no longer fail inside the tau-envelope heuristic."""
+        fs = 100.0
+        t = np.arange(8) / fs
+        x = np.cos(2 * np.pi * 5.0 * t)
+        estimator = NLSFrequencyEstimator()
+        result = estimator.estimate_full(x, fs)
+        assert isinstance(result, EstimationResult)
+        assert np.isfinite(result.f)
+
+    def test_estimate_full_reports_fit_failure_metadata(self, monkeypatch):
+        """Test fit failures are surfaced via result metadata instead of silently hidden."""
+        signal = RingDownSignal(f0=5.0, fs=100.0, N=1000, A0=1.0, snr_db=60.0, Q=10000.0)
+        rng = np.random.default_rng(42)
+        _, x, _ = signal.generate(rng=rng)
+
+        def fake_least_squares(*args, **kwargs):
+            return SimpleNamespace(success=False, message="forced failure", nfev=1)
+
+        monkeypatch.setattr("ringdownanalysis.estimators.least_squares", fake_least_squares)
+
+        estimator = NLSFrequencyEstimator()
+        result = estimator.estimate_full(x, signal.fs)
+        assert isinstance(result, EstimationResult)
+        assert result.success is False
+        assert result.used_fallback is True
+        assert result.message is not None
+
 
 class TestDFTFrequencyEstimator:
     """Test DFTFrequencyEstimator class."""
@@ -277,3 +307,23 @@ class TestDFTFrequencyEstimator:
         est_fmin = DFTFrequencyEstimator(f_min=1.0)
         f_fmin = est_fmin.estimate(x, fs)
         assert abs(f_fmin - f_true) < 0.5
+
+    def test_estimate_full_short_signal_no_zero_division(self):
+        """Test DFT full estimation handles short records without tau-envelope crashes."""
+        fs = 100.0
+        t = np.arange(8) / fs
+        x = np.cos(2 * np.pi * 5.0 * t)
+        estimator = DFTFrequencyEstimator()
+        result = estimator.estimate_full(x, fs)
+        assert isinstance(result, EstimationResult)
+        assert np.isfinite(result.f)
+
+    def test_estimate_full_edge_peak_reports_fallback(self):
+        """Test DFT metadata surfaces FFT-edge fallback cases."""
+        fs = 100.0
+        x = np.cos(2 * np.pi * 5.0 * np.arange(64) / fs)
+        estimator = DFTFrequencyEstimator(use_zeropad=False, f_min=49.0)
+        result = estimator.estimate_full(x, fs)
+        assert isinstance(result, EstimationResult)
+        assert result.used_fallback is True
+        assert result.message is not None
