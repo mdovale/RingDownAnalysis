@@ -42,6 +42,8 @@ dev = [
     "pytest-benchmark>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=2.0.0",
 ]
 examples = [
     "pandas>=1.3.0",

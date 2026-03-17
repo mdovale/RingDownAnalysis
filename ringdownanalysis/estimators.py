@@ -75,7 +75,7 @@ class FrequencyEstimator(ABC):
             Signal samples
         fs : float
             Sampling frequency (Hz)
-        **kwargs
+        ``**kwargs``
             Additional method-specific parameters
 
         Returns:
@@ -314,7 +314,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             Signal samples
         fs : float
             Sampling frequency (Hz)
-        **kwargs
+        ``**kwargs``
             Additional parameters:
             - initial_params: Optional tuple of (f0_init, phi0_init, A0_init, c0) to avoid redundant FFT
 
@@ -453,7 +453,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             Signal samples
         fs : float
             Sampling frequency (Hz)
-        **kwargs
+        ``**kwargs``
             Additional parameters:
             - initial_params: Optional tuple of (f0_init, phi0_init, A0_init, c0) to avoid redundant FFT
 
@@ -606,7 +606,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
             Signal samples
         fs : float
             Sampling frequency (Hz)
-        **kwargs
+        ``**kwargs``
             Additional parameters (ignored)
 
         Returns:
@@ -698,7 +698,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
             Signal samples
         fs : float
             Sampling frequency (Hz)
-        **kwargs
+        ``**kwargs``
             Additional parameters (ignored)
 
         Returns:

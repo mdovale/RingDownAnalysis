@@ -600,9 +600,9 @@ class BatchRingDownAnalyzer:
         --------
         Dict
             Dictionary with analysis results including:
-            - 'frequency_diffs': array of |f_NLS - f_DFT|
+            - 'frequency_diffs': array of abs(f_NLS - f_DFT)
             - 'crlb_stds': array of CRLB standard deviations
-            - 'ratios': array of |f_NLS - f_DFT| / CRLB_std
+            - 'ratios': array of abs(f_NLS - f_DFT) / CRLB_std
             - 'crlb_statistics': dict with mean, min, max CRLB
             - 'ratio_statistics': dict with mean, median, min, max ratios
         """

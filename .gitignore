@@ -73,6 +73,9 @@ htmlcov/
 notebooks/*.html
 docs/**/*.html
 
+# Sphinx build outputs
+docs/api/_build/
+
 # LaTeX build outputs
 *.aux
 *.out
@@ -92,6 +95,7 @@ docs/**/*.html
 
 # IDEs
 .vscode/
+.cursor/
 .idea/
 *.swp
 *.swo

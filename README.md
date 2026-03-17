@@ -255,6 +255,8 @@ See `examples/batch_analysis_example.py` for a complete batch analysis example.
 
 ### Documentation (`docs/`)
 
+- **`api/`**: Sphinx API documentation — build with ``make -C docs/api html``
+- **`data_format.md`**: Data format specification for CSV and MAT files
 - **`tn/main.tex`**: Comprehensive LaTeX document with theoretical foundation
 - **`tn/main.pdf`**: Compiled technical note
 
@@ -300,6 +302,8 @@ Experimental data files should be placed in the `data/` directory:
 - **CSV files**: Moku:Lab Phasemeter format with time in column 1 and phase (cycles) in column 4
 - **MAT files**: MATLAB format with `moku.data` structure containing time in column 1 and phase in column 4
 
+See `docs/data_format.md` for the full specification (column indices, units, validation rules, edge cases).
+
 ## Dependencies
 
 Core dependencies (automatically installed via `pip install -e .`):
@@ -323,6 +327,21 @@ Optional dependencies:
 - pytest-cov >= 4.0.0 (for coverage)
 - pytest-benchmark >= 4.0.0 (for benchmarking)
 - ruff >= 0.1.0 (for linting)
+
+## API Documentation
+
+Build the Sphinx API docs:
+
+```bash
+make -C docs/api html
+```
+
+Open `docs/api/_build/html/index.html` in a browser. Or install dev dependencies and run:
+
+```bash
+pip install -e ".[dev]"
+cd docs/api && make html
+```
 
 ## Testing
 
