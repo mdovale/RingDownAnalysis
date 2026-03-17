@@ -2,6 +2,8 @@
 Frequency estimation methods for ring-down signals.
 """
 
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
 from typing import NamedTuple, Optional
