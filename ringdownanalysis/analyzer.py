@@ -116,6 +116,12 @@ class RingDownAnalyzer:
         t: np.ndarray,
         fs: float,
         initial_params: tuple | None = None,
+        *,
+        tau_init: float | None = None,
+        max_nfev: int | None = None,
+        ftol: float | None = None,
+        xtol: float | None = None,
+        gtol: float | None = None,
     ) -> float:
         """
         Estimate tau from full data using NLS fit.
@@ -128,6 +134,14 @@ class RingDownAnalyzer:
             Time array (s)
         fs : float
             Sampling frequency (Hz)
+        initial_params : tuple, optional
+            (f0_init, phi0_init, A0_init, c0) to avoid redundant DFT. If None, estimated from data.
+        tau_init : float, optional
+            Initial guess for tau (s). If None, estimated from envelope decay.
+        max_nfev : int, optional
+            Maximum number of function evaluations for the fit. Default 150.
+        ftol, xtol, gtol : float, optional
+            Convergence tolerances for least_squares. Defaults 1e-8.
 
         Returns:
         --------
@@ -143,8 +157,9 @@ class RingDownAnalyzer:
         else:
             f0_init, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(data, fs)
 
-        # Initial tau guess from envelope decay
-        tau_init = _estimate_initial_tau_from_envelope(data, t_norm)
+        # Initial tau guess
+        if tau_init is None:
+            tau_init = _estimate_initial_tau_from_envelope(data, t_norm)
 
         # NLS fit to estimate tau: fit (A0, f, phi, tau, c)
         def residuals_tau(p):
@@ -157,28 +172,43 @@ class RingDownAnalyzer:
 
         lb = [0.0, f_low, -np.pi, t_norm[1], -np.inf]
         ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t_norm[-1], np.inf]
+        # Extend tau bounds if tau_init is provided and outside default range
+        tau_ub_default = 10.0 * t_norm[-1]
+        if tau_init is not None and tau_init > tau_ub_default:
+            ub[3] = max(ub[3], tau_init * 1.1)  # Allow tau above default upper bound
+        if tau_init is not None and tau_init < lb[3]:
+            lb[3] = max(t_norm[1], min(lb[3], tau_init * 0.9))
+
+        ls_kwargs: dict = {"method": "trf", "verbose": 0}
+        if max_nfev is not None:
+            ls_kwargs["max_nfev"] = max_nfev
+        else:
+            ls_kwargs["max_nfev"] = 150
+        if ftol is not None:
+            ls_kwargs["ftol"] = ftol
+        else:
+            ls_kwargs["ftol"] = 1e-8
+        if xtol is not None:
+            ls_kwargs["xtol"] = xtol
+        else:
+            ls_kwargs["xtol"] = 1e-8
+        if gtol is not None:
+            ls_kwargs["gtol"] = gtol
+        else:
+            ls_kwargs["gtol"] = 1e-8
 
         res_tau = least_squares(
             residuals_tau,
             x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
             bounds=(lb, ub),
-            method="trf",
-            ftol=1e-8,
-            xtol=1e-8,
-            gtol=1e-8,
-            max_nfev=150,  # Optimized: typical convergence in 6-12 nfev, 150 provides safety margin
-            verbose=0,
+            **ls_kwargs,
         )
 
         if res_tau.success:
             _, _, _, tau_est, _ = res_tau.x
-            # Sanity check
-            if (
-                tau_est <= 0
-                or not np.isfinite(tau_est)
-                or tau_est > 10.0 * t_norm[-1]
-                or tau_est < t_norm[1]
-            ):
+            # Sanity check (use extended tau_ub if tau_init was large)
+            tau_ub = ub[3]  # Already extended above if tau_init was outside default
+            if tau_est <= 0 or not np.isfinite(tau_est) or tau_est > tau_ub or tau_est < t_norm[1]:
                 if logger.isEnabledFor(logging.WARNING):
                     logger.warning(
                         "tau_sanity_check_failed",
@@ -284,6 +314,11 @@ class RingDownAnalyzer:
         tau_est: float,
         fs: float,
         initial_params: tuple | None = None,
+        *,
+        max_nfev: int | None = None,
+        ftol: float | None = None,
+        xtol: float | None = None,
+        gtol: float | None = None,
     ) -> tuple[float, float]:
         """
         Estimate A0 (initial amplitude) and sigma (noise std) from cropped data.
@@ -298,6 +333,12 @@ class RingDownAnalyzer:
             Estimated tau value in seconds
         fs : float
             Sampling frequency (Hz)
+        initial_params : tuple, optional
+            (f0_init, phi0_init, A0_init, c0) to avoid redundant DFT. If None, estimated from data.
+        max_nfev : int, optional
+            Maximum number of function evaluations for the fit. Default 100.
+        ftol, xtol, gtol : float, optional
+            Convergence tolerances for least_squares. Default ftol 1e-6; xtol/gtol use scipy defaults.
 
         Returns:
         --------
@@ -332,14 +373,25 @@ class RingDownAnalyzer:
         f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
         f_high = min(0.5 * fs, f0_init + max(0.2 * f0_init, 2 * df))
 
+        ls_kwargs: dict = {"method": "trf", "verbose": 0}
+        if max_nfev is not None:
+            ls_kwargs["max_nfev"] = max_nfev
+        else:
+            ls_kwargs["max_nfev"] = 100
+        if ftol is not None:
+            ls_kwargs["ftol"] = ftol
+        else:
+            ls_kwargs["ftol"] = 1e-6
+        if xtol is not None:
+            ls_kwargs["xtol"] = xtol
+        if gtol is not None:
+            ls_kwargs["gtol"] = gtol
+
         res_fit = least_squares(
             model_residuals,
             x0=np.array([A0_init, f0_init, phi0_init, c0]),
             bounds=([0.0, f_low, -np.pi, -np.inf], [10.0 * A0_init, f_high, np.pi, np.inf]),
-            method="trf",
-            ftol=1e-6,
-            max_nfev=100,  # Optimized: typical convergence in 5-10 nfev, 100 provides safety margin
-            verbose=0,
+            **ls_kwargs,
         )
 
         if res_fit.success:
@@ -379,11 +431,33 @@ class RingDownAnalyzer:
         data: np.ndarray,
         fs: float,
         max_tau_multiplier: float,
+        *,
+        initial_params: tuple | None = None,
+        tau_init: float | None = None,
+        max_nfev: int | None = None,
+        ftol: float | None = None,
+        xtol: float | None = None,
+        gtol: float | None = None,
     ) -> dict:
         """Run the full analysis pipeline on (t, data) arrays."""
-        initial_params_full = _estimate_initial_parameters_from_dft(data, fs)
+        if initial_params is not None:
+            initial_params_full = initial_params
+            initial_params_cropped = initial_params
+        else:
+            initial_params_full = _estimate_initial_parameters_from_dft(data, fs)
+            initial_params_cropped = None  # Will compute after crop
 
-        tau_est = self.estimate_tau(data, t, fs, initial_params=initial_params_full)
+        tau_est = self.estimate_tau(
+            data,
+            t,
+            fs,
+            initial_params=initial_params_full,
+            tau_init=tau_init,
+            max_nfev=max_nfev,
+            ftol=ftol,
+            xtol=xtol,
+            gtol=gtol,
+        )
 
         t_crop, data_cropped = self.crop_data_to_tau(
             t, data, tau_est, min_samples=1000, max_tau_multiplier=max_tau_multiplier
@@ -394,12 +468,33 @@ class RingDownAnalyzer:
             t_crop = t
             data_cropped = data
 
-        initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
+        if initial_params_cropped is None:
+            initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
+
+        fit_kwargs = {}
+        if max_nfev is not None:
+            fit_kwargs["max_nfev"] = max_nfev
+        if ftol is not None:
+            fit_kwargs["ftol"] = ftol
+        if xtol is not None:
+            fit_kwargs["xtol"] = xtol
+        if gtol is not None:
+            fit_kwargs["gtol"] = gtol
+        if tau_init is not None:
+            fit_kwargs["tau_init"] = tau_init
 
         result_nls = self.nls_estimator.estimate_full(
-            data_cropped, fs, initial_params=initial_params_cropped
+            data_cropped,
+            fs,
+            initial_params=initial_params_cropped,
+            **fit_kwargs,
         )
-        result_dft = self.dft_estimator.estimate_full(data_cropped, fs)
+        result_dft = self.dft_estimator.estimate_full(
+            data_cropped,
+            fs,
+            initial_params=initial_params_cropped,
+            **fit_kwargs,
+        )
 
         f_nls = result_nls.f
         f_dft = result_dft.f
@@ -408,7 +503,15 @@ class RingDownAnalyzer:
         tau_nls = result_nls.tau
 
         A0_est, sigma_est = self.estimate_noise_parameters(
-            data_cropped, t_crop, tau_est, fs, initial_params=initial_params_cropped
+            data_cropped,
+            t_crop,
+            tau_est,
+            fs,
+            initial_params=initial_params_cropped,
+            max_nfev=max_nfev,
+            ftol=ftol,
+            xtol=xtol,
+            gtol=gtol,
         )
 
         N_crop = len(data_cropped)
@@ -446,6 +549,12 @@ class RingDownAnalyzer:
         time_col: str | int = 0,
         data_col: str | int = 1,
         max_tau_multiplier: float = 1.0,
+        initial_params: tuple | None = None,
+        tau_init: float | None = None,
+        max_nfev: int | None = None,
+        ftol: float | None = None,
+        xtol: float | None = None,
+        gtol: float | None = None,
     ) -> dict:
         """
         Analyze ring-down data from numpy arrays or pandas Series/DataFrame.
@@ -465,6 +574,14 @@ class RingDownAnalyzer:
             Column index or name for signal when data is a DataFrame. Default 1.
         max_tau_multiplier : float
             Multiplier for tau_est when cropping data. Default 1.0.
+        initial_params : tuple, optional
+            (f0_init, phi0_init, A0_init, c0) to avoid redundant DFT. If None, estimated from data.
+        tau_init : float, optional
+            Initial guess for tau (s). If None, estimated from envelope decay.
+        max_nfev : int, optional
+            Maximum function evaluations for NLS fits. Increase for noisy data (e.g. 300–500).
+        ftol, xtol, gtol : float, optional
+            Convergence tolerances for least_squares. Relax (e.g. 1e-6) for noisy data.
 
         Returns:
         --------
@@ -484,6 +601,8 @@ class RingDownAnalyzer:
         >>> result = analyzer.analyze_array(data=data, fs=1000.0)
         >>> # From pandas DataFrame
         >>> result = analyzer.analyze_array(data=df, time_col="time", data_col="phase")
+        >>> # Noisy data: relax tolerances and increase max_nfev
+        >>> result = analyzer.analyze_array(t, data, max_nfev=500, ftol=1e-6)
         """
         t_arr, data_arr = _parse_array_input(
             t=t, data=data, fs=fs, time_col=time_col, data_col=data_col
@@ -501,7 +620,18 @@ class RingDownAnalyzer:
                 },
             )
 
-        result = self._run_analysis_pipeline(t_arr, data_arr, fs, max_tau_multiplier)
+        result = self._run_analysis_pipeline(
+            t_arr,
+            data_arr,
+            fs,
+            max_tau_multiplier,
+            initial_params=initial_params,
+            tau_init=tau_init,
+            max_nfev=max_nfev,
+            ftol=ftol,
+            xtol=xtol,
+            gtol=gtol,
+        )
 
         if logger.isEnabledFor(logging.INFO):
             logger.info(
@@ -520,7 +650,18 @@ class RingDownAnalyzer:
 
         return result
 
-    def analyze_file(self, filepath: str, max_tau_multiplier: float = 1.0) -> dict:
+    def analyze_file(
+        self,
+        filepath: str,
+        max_tau_multiplier: float = 1.0,
+        *,
+        initial_params: tuple | None = None,
+        tau_init: float | None = None,
+        max_nfev: int | None = None,
+        ftol: float | None = None,
+        xtol: float | None = None,
+        gtol: float | None = None,
+    ) -> dict:
         """
         Process a single data file and return analysis results.
 
@@ -531,6 +672,14 @@ class RingDownAnalyzer:
         max_tau_multiplier : float
             Multiplier for tau_est to determine maximum record length when cropping data.
             Default is 1.0.
+        initial_params : tuple, optional
+            (f0_init, phi0_init, A0_init, c0) to avoid redundant DFT. If None, estimated from data.
+        tau_init : float, optional
+            Initial guess for tau (s). If None, estimated from envelope decay.
+        max_nfev : int, optional
+            Maximum function evaluations for NLS fits. Increase for noisy data (e.g. 300–500).
+        ftol, xtol, gtol : float, optional
+            Convergence tolerances for least_squares. Relax (e.g. 1e-6) for noisy data.
 
         Returns:
         --------
@@ -557,7 +706,18 @@ class RingDownAnalyzer:
         t, data, V2, file_type = RingDownDataLoader.load(filepath)
         fs = 1.0 / np.mean(np.diff(t))
 
-        result = self._run_analysis_pipeline(t, data, fs, max_tau_multiplier)
+        result = self._run_analysis_pipeline(
+            t,
+            data,
+            fs,
+            max_tau_multiplier,
+            initial_params=initial_params,
+            tau_init=tau_init,
+            max_nfev=max_nfev,
+            ftol=ftol,
+            xtol=xtol,
+            gtol=gtol,
+        )
 
         result["filename"] = Path(filepath).name
         result["type"] = file_type

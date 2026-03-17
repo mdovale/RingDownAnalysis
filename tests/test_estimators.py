@@ -254,3 +254,26 @@ class TestDFTFrequencyEstimator:
         estimator = DFTFrequencyEstimator()
         with pytest.raises(ValueError, match="positive and finite"):
             estimator.estimate(x, 0.0)
+
+    def test_estimate_f_min_excludes_low_freq_bins(self):
+        """Test f_min excludes low-frequency bins when searching for peak.
+
+        Phase/cumulative data has a ramp that dominates low frequencies.
+        With f_min=1 Hz, we find the 7 Hz oscillation instead of ~0 Hz.
+        """
+        fs = 149.0
+        N = 50000
+        t = np.arange(N) / fs
+        f_true = 7.5
+        # Ring-down signal (amplitude-modulated sinusoid)
+        x = 0.1 * np.exp(-t / 300) * np.cos(2 * np.pi * f_true * t + 0.1) + 0.01
+
+        # Without f_min: for this clean signal, default should work
+        est_default = DFTFrequencyEstimator(f_min=0.0)
+        f_default = est_default.estimate(x, fs)
+        assert abs(f_default - f_true) < 0.5
+
+        # With f_min=1: should still find 7.5 Hz (excludes bins below 1 Hz)
+        est_fmin = DFTFrequencyEstimator(f_min=1.0)
+        f_fmin = est_fmin.estimate(x, fs)
+        assert abs(f_fmin - f_true) < 0.5

@@ -49,6 +49,15 @@ class TestRingDownAnalyzer:
         assert tau_est > 0
         assert np.isfinite(tau_est)
 
+    def test_estimate_tau_with_tau_init(self, sample_ringdown_signal):
+        """Test estimate_tau with provided tau_init."""
+        t, data, fs = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        tau_init = 0.5  # initial guess for tau (s)
+        tau_est = analyzer.estimate_tau(data, t, fs, tau_init=tau_init)
+        assert tau_est > 0
+        assert np.isfinite(tau_est)
+
     def test_crop_data_to_tau_crops_correctly(self, sample_ringdown_signal):
         """Test crop_data_to_tau crops to max_tau_multiplier * tau."""
         t, data, fs = sample_ringdown_signal

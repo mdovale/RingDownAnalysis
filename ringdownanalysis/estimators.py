@@ -230,7 +230,8 @@ def _fit_lorentzian_to_peak(
 def _estimate_initial_parameters_from_dft(x: np.ndarray, fs: float) -> tuple:
     """Estimate initial frequency, phase, amplitude, and DC offset from DFT."""
     N = len(x)
-    X = np.fft.rfft(x * np.hanning(N))
+    x_demean = x - np.mean(x)
+    X = np.fft.rfft(x_demean * np.hanning(N))
     mag2 = np.abs(X) ** 2
 
     # Skip DC component (k=0) when finding peak
@@ -317,6 +318,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         ``**kwargs``
             Additional parameters:
             - initial_params: Optional tuple of (f0_init, phi0_init, A0_init, c0) to avoid redundant FFT
+            - tau_init: Optional initial guess for tau (s). If None, estimated from envelope.
+            - max_nfev, ftol, xtol, gtol: Optional fit convergence parameters for least_squares
 
         Returns:
         --------
@@ -356,16 +359,19 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             lb = [0.0, f_low, -np.pi, -np.inf]
             ub = [10.0 * A0_init, f_high, np.pi, np.inf]
 
+            ls_kwargs = {
+                "method": "trf",
+                "verbose": 0,
+                "ftol": kwargs.get("ftol", 1e-8),
+                "xtol": kwargs.get("xtol", 1e-8),
+                "gtol": kwargs.get("gtol", 1e-8),
+                "max_nfev": kwargs.get("max_nfev", 500),
+            }
             res = least_squares(
                 residuals,
                 x0=np.array([A0_init, f0_init, phi0_init, c0]),
                 bounds=(lb, ub),
-                method="trf",
-                ftol=1e-8,
-                xtol=1e-8,
-                gtol=1e-8,
-                max_nfev=100,  # Optimized: typical convergence in 5-10 nfev, 100 provides safety margin
-                verbose=0,
+                **ls_kwargs,
             )
 
             if not res.success:
@@ -384,7 +390,9 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             _, f_hat, _, _ = res.x
         else:
             # Unknown tau: estimate (A0, f, phi, tau, c)
-            tau_init = _estimate_initial_tau_from_envelope(x, t)
+            tau_init = kwargs.get("tau_init")
+            if tau_init is None:
+                tau_init = _estimate_initial_tau_from_envelope(x, t)
 
             def residuals(p):
                 A0, f, phi, tau, c = p
@@ -396,17 +404,26 @@ class NLSFrequencyEstimator(FrequencyEstimator):
 
             lb = [0.0, f_low, -np.pi, t[1], -np.inf]
             ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t[-1], np.inf]
+            # Extend tau bounds if tau_init is provided and outside default range
+            tau_ub_default = 10.0 * t[-1]
+            if tau_init > tau_ub_default:
+                ub[3] = max(ub[3], tau_init * 1.1)
+            if tau_init < lb[3]:
+                lb[3] = max(t[1], min(lb[3], tau_init * 0.9))
 
+            ls_kwargs = {
+                "method": "trf",
+                "verbose": 0,
+                "ftol": kwargs.get("ftol", 1e-8),
+                "xtol": kwargs.get("xtol", 1e-8),
+                "gtol": kwargs.get("gtol", 1e-8),
+                "max_nfev": kwargs.get("max_nfev", 500),
+            }
             res = least_squares(
                 residuals,
                 x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
                 bounds=(lb, ub),
-                method="trf",
-                ftol=1e-8,
-                xtol=1e-8,
-                gtol=1e-8,
-                max_nfev=150,  # Optimized: typical convergence in 6-12 nfev, 150 provides safety margin
-                verbose=0,
+                **ls_kwargs,
             )
 
             if not res.success:
@@ -456,6 +473,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         ``**kwargs``
             Additional parameters:
             - initial_params: Optional tuple of (f0_init, phi0_init, A0_init, c0) to avoid redundant FFT
+            - tau_init: Optional initial guess for tau (s). If None, estimated from envelope.
+            - max_nfev, ftol, xtol, gtol: Optional fit convergence parameters for least_squares
 
         Returns:
         --------
@@ -487,7 +506,9 @@ class NLSFrequencyEstimator(FrequencyEstimator):
             return EstimationResult(f=f_hat, tau=tau_hat, Q=Q_hat)
         else:
             # Unknown tau: estimate (A0, f, phi, tau, c) and extract both
-            tau_init = _estimate_initial_tau_from_envelope(x, t)
+            tau_init = kwargs.get("tau_init")
+            if tau_init is None:
+                tau_init = _estimate_initial_tau_from_envelope(x, t)
 
             def residuals(p):
                 A0, f, phi, tau, c = p
@@ -499,17 +520,26 @@ class NLSFrequencyEstimator(FrequencyEstimator):
 
             lb = [0.0, f_low, -np.pi, t[1], -np.inf]
             ub = [10.0 * A0_init, f_high, np.pi, 10.0 * t[-1], np.inf]
+            # Extend tau bounds if tau_init is provided and outside default range
+            tau_ub_default = 10.0 * t[-1]
+            if tau_init > tau_ub_default:
+                ub[3] = max(ub[3], tau_init * 1.1)
+            if tau_init < lb[3]:
+                lb[3] = max(t[1], min(lb[3], tau_init * 0.9))
 
+            ls_kwargs = {
+                "method": "trf",
+                "verbose": 0,
+                "ftol": kwargs.get("ftol", 1e-8),
+                "xtol": kwargs.get("xtol", 1e-8),
+                "gtol": kwargs.get("gtol", 1e-8),
+                "max_nfev": kwargs.get("max_nfev", 500),
+            }
             res = least_squares(
                 residuals,
                 x0=np.array([A0_init, f0_init, phi0_init, tau_init, c0]),
                 bounds=(lb, ub),
-                method="trf",
-                ftol=1e-8,
-                xtol=1e-8,
-                gtol=1e-8,
-                max_nfev=150,
-                verbose=0,
+                **ls_kwargs,
             )
 
             if not res.success:
@@ -544,7 +574,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                 f_hat = f0_init
                 return EstimationResult(f=f_hat, tau=None, Q=None)
 
-            if tau_hat <= 0 or tau_hat > 10.0 * t[-1] or tau_hat < t[1]:
+            tau_ub_used = max(10.0 * t[-1], tau_init * 1.1) if tau_init else 10.0 * t[-1]
+            if tau_hat <= 0 or tau_hat > tau_ub_used or tau_hat < t[1]:
                 if logger.isEnabledFor(logging.WARNING):
                     logger.warning(
                         "nls_full_tau_sanity_check_failed",
@@ -573,6 +604,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         pad_factor: int = 4,
         lorentzian_points: int = 7,
         kaiser_beta: float = 9.0,
+        f_min: float = 0.0,
     ):
         """
         Initialize DFT frequency estimator.
@@ -589,12 +621,17 @@ class DFTFrequencyEstimator(FrequencyEstimator):
             Number of points around peak to use for Lorentzian fitting (default: 7)
         kaiser_beta : float
             Kaiser window beta parameter (default: 9.0)
+        f_min : float
+            Minimum frequency (Hz) to consider when searching for the peak.
+            Bins below f_min are excluded. Use this for phase/cumulative data
+            where a ramp dominates the low-frequency spectrum (default: 0.0).
         """
         self.window = window
         self.use_zeropad = use_zeropad
         self.pad_factor = pad_factor
         self.lorentzian_points = lorentzian_points
         self.kaiser_beta = kaiser_beta
+        self.f_min = f_min
 
     def estimate(self, x: np.ndarray, fs: float, **kwargs) -> float:
         """
@@ -622,6 +659,9 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         _validate_signal_input(x)
         _validate_fs(fs)
         N = len(x)
+
+        # Remove mean to avoid DC leakage dominating low-frequency bins
+        x = x - np.mean(x)
 
         # Apply window
         if self.window == "kaiser":
@@ -651,9 +691,15 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         X = np.fft.rfft(xw_pad)
         P = np.abs(X) ** 2
 
-        # Find peak bin (skip DC component k=0)
-        # Use view instead of copy to avoid memory allocation
-        k = int(np.argmax(P[1:]) + 1)  # Skip first element, add 1 to index
+        # Find peak bin (skip DC k=0; optionally exclude bins below f_min)
+        # For phase/cumulative data, a ramp dominates low frequencies; f_min
+        # excludes those bins so we find the actual oscillation peak (e.g. 7-8 Hz)
+        k_min = 1  # Skip DC
+        if self.f_min > 0:
+            k_min = max(1, int(np.ceil(self.f_min * N_dft / fs)))
+        if k_min >= len(P):
+            k_min = max(1, len(P) - 1)
+        k = int(np.argmax(P[k_min:]) + k_min)
 
         # Guard against edges
         if k <= 0 or k >= len(P) - 1:
@@ -699,7 +745,10 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         fs : float
             Sampling frequency (Hz)
         ``**kwargs``
-            Additional parameters (ignored)
+            Additional parameters:
+            - initial_params: Optional tuple of (f0_init, phi0_init, A0_init, c0) for NLS tau step
+            - tau_init: Optional initial guess for tau (s). If None, estimated from envelope.
+            - max_nfev, ftol, xtol, gtol: Optional fit convergence parameters for least_squares
 
         Returns:
         --------
@@ -728,7 +777,9 @@ class DFTFrequencyEstimator(FrequencyEstimator):
             _, phi0_init, A0_init, c0 = _estimate_initial_parameters_from_dft(x, fs)
 
         # Initial tau guess
-        tau_init = _estimate_initial_tau_from_envelope(x, t)
+        tau_init = kwargs.get("tau_init")
+        if tau_init is None:
+            tau_init = _estimate_initial_tau_from_envelope(x, t)
 
         # NLS fit with fixed frequency: estimate (A0, phi, tau, c)
         def residuals(p):
@@ -737,17 +788,26 @@ class DFTFrequencyEstimator(FrequencyEstimator):
 
         lb = [0.0, -np.pi, t[1], -np.inf]
         ub = [10.0 * A0_init, np.pi, 10.0 * t[-1], np.inf]
+        # Extend tau bounds if tau_init is provided and outside default range
+        tau_ub_default = 10.0 * t[-1]
+        if tau_init > tau_ub_default:
+            ub[2] = max(ub[2], tau_init * 1.1)
+        if tau_init < lb[2]:
+            lb[2] = max(t[1], min(lb[2], tau_init * 0.9))
 
+        ls_kwargs = {
+            "method": "trf",
+            "verbose": 0,
+            "ftol": kwargs.get("ftol", 1e-8),
+            "xtol": kwargs.get("xtol", 1e-8),
+            "gtol": kwargs.get("gtol", 1e-8),
+            "max_nfev": kwargs.get("max_nfev", 500),
+        }
         res = least_squares(
             residuals,
             x0=np.array([A0_init, phi0_init, tau_init, c0]),
             bounds=(lb, ub),
-            method="trf",
-            ftol=1e-8,
-            xtol=1e-8,
-            gtol=1e-8,
-            max_nfev=150,
-            verbose=0,
+            **ls_kwargs,
         )
 
         if not res.success:
@@ -765,7 +825,8 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         _, _, tau_hat, _ = res.x
 
         # Sanity check on tau
-        if tau_hat <= 0 or tau_hat > 10.0 * t[-1] or tau_hat < t[1]:
+        tau_ub_used = max(10.0 * t[-1], tau_init * 1.1) if tau_init else 10.0 * t[-1]
+        if tau_hat <= 0 or tau_hat > tau_ub_used or tau_hat < t[1]:
             if logger.isEnabledFor(logging.WARNING):
                 logger.warning(
                     "dft_full_tau_sanity_check_failed",
