@@ -6,33 +6,20 @@ This repository contains theoretical analysis, numerical simulations, and experi
 
 ### Installation
 
-Since this package is not yet available on PyPI, install it from source:
+From PyPI:
 
 ```bash
-# Clone the repository
+pip install ringdownanalysis
+```
+
+For development (testing, linting) or examples and notebooks, install from source:
+
+```bash
 git clone https://github.com/mdovale/RingDownAnalysis.git
 cd RingDownAnalysis
-
-# Install in editable mode
-pip install -e .
-```
-
-For development with testing and linting tools:
-
-```bash
-pip install -e ".[dev]"
-```
-
-For examples and notebooks:
-
-```bash
-pip install -e ".[examples]"
-```
-
-Or install everything:
-
-```bash
-pip install -e ".[all]"
+pip install -e ".[dev]"      # testing, ruff, mypy, sphinx
+pip install -e ".[examples]" # jupyter, pandas for notebooks
+pip install -e ".[all]"     # everything
 ```
 
 ### Basic Usage
@@ -306,7 +293,7 @@ See `docs/data_format.md` for the full specification (column indices, units, val
 
 ## Dependencies
 
-Core dependencies (automatically installed via `pip install -e .`):
+Core dependencies (automatically installed via `pip install ringdownanalysis`):
 - NumPy >= 1.20.0
 - SciPy >= 1.7.0
 - Matplotlib >= 3.5.0
