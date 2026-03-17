@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -19,7 +20,68 @@ from .estimators import (
     _estimate_initial_tau_from_envelope,
 )
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = logging.getLogger(__name__)
+
+
+def _parse_array_input(
+    t: np.ndarray | None = None,
+    data: np.ndarray | None = None,
+    fs: float | None = None,
+    *,
+    time_col: str | int = 0,
+    data_col: str | int = 1,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Parse array-like inputs into (t, data) numpy arrays.
+
+    Supports:
+    - (t, data): two array-likes
+    - (data, fs): data array and sampling frequency (t = arange(len(data))/fs)
+    - (data=DataFrame): extract t and data from columns via time_col, data_col
+
+    Returns:
+    --------
+    t : np.ndarray
+        Time array (s), starting from 0
+    data : np.ndarray
+        Signal array
+    """
+    import pandas as pd
+
+    if data is None:
+        raise ValueError("data is required")
+
+    # DataFrame: extract time and signal columns
+    if isinstance(data, pd.DataFrame):
+        t_arr = np.asarray(
+            data.iloc[:, time_col] if isinstance(time_col, int) else data[time_col],
+            dtype=np.float64,
+        )
+        data_arr = np.asarray(
+            data.iloc[:, data_col] if isinstance(data_col, int) else data[data_col],
+            dtype=np.float64,
+        )
+        t_arr = t_arr - t_arr[0]
+    elif t is not None:
+        t_arr = np.asarray(t, dtype=np.float64)
+        data_arr = np.asarray(data, dtype=np.float64)
+    elif fs is not None:
+        data_arr = np.asarray(data, dtype=np.float64)
+        t_arr = np.arange(len(data_arr), dtype=np.float64) / fs
+    else:
+        raise ValueError("Either t or fs must be provided when data is not a DataFrame")
+
+    if len(t_arr) != len(data_arr):
+        raise ValueError(
+            f"t and data must have same length, got {len(t_arr)} and {len(data_arr)}"
+        )
+    if len(t_arr) < 2:
+        raise ValueError("At least 2 samples required for analysis")
+
+    return t_arr, data_arr
 
 
 class RingDownAnalyzer:
@@ -317,6 +379,153 @@ class RingDownAnalyzer:
 
         return A0_est, sigma_est
 
+    def _run_analysis_pipeline(
+        self,
+        t: np.ndarray,
+        data: np.ndarray,
+        fs: float,
+        max_tau_multiplier: float,
+    ) -> dict:
+        """Run the full analysis pipeline on (t, data) arrays."""
+        initial_params_full = _estimate_initial_parameters_from_dft(data, fs)
+
+        tau_est = self.estimate_tau(data, t, fs, initial_params=initial_params_full)
+
+        t_crop, data_cropped = self.crop_data_to_tau(
+            t, data, tau_est, min_samples=1000, max_tau_multiplier=max_tau_multiplier
+        )
+
+        min_samples_for_analysis = 1000
+        if len(t_crop) < min_samples_for_analysis:
+            t_crop = t
+            data_cropped = data
+
+        initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
+
+        result_nls = self.nls_estimator.estimate_full(
+            data_cropped, fs, initial_params=initial_params_cropped
+        )
+        result_dft = self.dft_estimator.estimate_full(data_cropped, fs)
+
+        f_nls = result_nls.f
+        f_dft = result_dft.f
+        Q_nls = result_nls.Q
+        Q_dft = result_dft.Q
+
+        A0_est, sigma_est = self.estimate_noise_parameters(
+            data_cropped, t_crop, tau_est, fs, initial_params=initial_params_cropped
+        )
+
+        N_crop = len(data_cropped)
+        crlb_var_f = self.crlb_calc.variance(A0_est, sigma_est, fs, N_crop, tau_est)
+        crlb_std_f = np.sqrt(crlb_var_f) if np.isfinite(crlb_var_f) else np.inf
+
+        return {
+            "t": t,
+            "data": data,
+            "V2": None,
+            "t_crop": t_crop,
+            "data_cropped": data_cropped,
+            "fs": fs,
+            "tau_est": tau_est,
+            "f_nls": f_nls,
+            "f_dft": f_dft,
+            "Q_nls": Q_nls,
+            "Q_dft": Q_dft,
+            "A0_est": A0_est,
+            "sigma_est": sigma_est,
+            "crlb_std_f": crlb_std_f,
+            "N": len(t),
+            "N_crop": len(t_crop),
+            "T": t[-1],
+            "T_crop": t_crop[-1] if len(t_crop) > 0 else 0,
+        }
+
+    def analyze_array(
+        self,
+        t: np.ndarray | None = None,
+        data: np.ndarray | None = None,
+        fs: float | None = None,
+        *,
+        time_col: str | int = 0,
+        data_col: str | int = 1,
+        max_tau_multiplier: float = 1.0,
+    ) -> dict:
+        """
+        Analyze ring-down data from numpy arrays or pandas Series/DataFrame.
+
+        Parameters:
+        -----------
+        t : np.ndarray or pd.Series, optional
+            Time array (s). Required unless data is a DataFrame or fs is provided.
+        data : np.ndarray, pd.Series, or pd.DataFrame
+            Signal data. Required.
+        fs : float, optional
+            Sampling frequency (Hz). If provided with t=None, time is inferred as
+            t = np.arange(len(data)) / fs.
+        time_col : str or int, optional
+            Column index or name for time when data is a DataFrame. Default 0.
+        data_col : str or int, optional
+            Column index or name for signal when data is a DataFrame. Default 1.
+        max_tau_multiplier : float
+            Multiplier for tau_est when cropping data. Default 1.0.
+
+        Returns:
+        --------
+        dict
+            Results dictionary (same structure as analyze_file, minus filename/type).
+
+        Raises:
+        -------
+        ValueError
+            If data is invalid, lengths mismatch, or neither t nor fs provided.
+
+        Examples:
+        ---------
+        >>> # From numpy arrays
+        >>> result = analyzer.analyze_array(t, data)
+        >>> # From data and sampling rate
+        >>> result = analyzer.analyze_array(data=data, fs=1000.0)
+        >>> # From pandas DataFrame
+        >>> result = analyzer.analyze_array(data=df, time_col="time", data_col="phase")
+        """
+        t_arr, data_arr = _parse_array_input(
+            t=t, data=data, fs=fs, time_col=time_col, data_col=data_col
+        )
+
+        fs = 1.0 / np.mean(np.diff(t_arr))
+
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "analysis_start",
+                extra={
+                    "event": "analysis_start",
+                    "source": "array",
+                    "n_samples": len(t_arr),
+                },
+            )
+
+        result = self._run_analysis_pipeline(
+            t_arr, data_arr, fs, max_tau_multiplier
+        )
+
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "analysis_complete",
+                extra={
+                    "event": "analysis_complete",
+                    "source": "array",
+                    "f_nls": float(result["f_nls"]),
+                    "f_dft": float(result["f_dft"]),
+                    "tau_est": float(result["tau_est"]),
+                    "crlb_std_f": float(result["crlb_std_f"])
+                    if np.isfinite(result["crlb_std_f"])
+                    else None,
+                },
+            )
+
+        return result
+
     def analyze_file(self, filepath: str, max_tau_multiplier: float = 1.0) -> dict:
         """
         Process a single data file and return analysis results.
@@ -351,52 +560,16 @@ class RingDownAnalyzer:
                 },
             )
 
-        # Load data
         t, data, V2, file_type = RingDownDataLoader.load(filepath)
-
-        # Calculate sampling frequency
         fs = 1.0 / np.mean(np.diff(t))
 
-        # Compute initial parameters once and reuse them
-        initial_params_full = _estimate_initial_parameters_from_dft(data, fs)
-
-        # Estimate tau from full data (using cached initial params)
-        tau_est = self.estimate_tau(data, t, fs, initial_params=initial_params_full)
-
-        # Crop data to max_tau_multiplier*tau_est
-        t_crop, data_cropped = self.crop_data_to_tau(
-            t, data, tau_est, min_samples=1000, max_tau_multiplier=max_tau_multiplier
+        result = self._run_analysis_pipeline(
+            t, data, fs, max_tau_multiplier
         )
 
-        # Warn if cropped data is too short
-        min_samples_for_analysis = 1000
-        if len(t_crop) < min_samples_for_analysis:
-            t_crop = t
-            data_cropped = data
-
-        # Compute initial parameters for cropped data once
-        initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
-
-        # Estimate frequencies, tau, and Q on cropped data
-        result_nls = self.nls_estimator.estimate_full(
-            data_cropped, fs, initial_params=initial_params_cropped
-        )
-        result_dft = self.dft_estimator.estimate_full(data_cropped, fs)
-
-        f_nls = result_nls.f
-        f_dft = result_dft.f
-        Q_nls = result_nls.Q
-        Q_dft = result_dft.Q
-
-        # Estimate noise parameters (using cached initial params)
-        A0_est, sigma_est = self.estimate_noise_parameters(
-            data_cropped, t_crop, tau_est, fs, initial_params=initial_params_cropped
-        )
-
-        # Calculate CRLB
-        N_crop = len(data_cropped)
-        crlb_var_f = self.crlb_calc.variance(A0_est, sigma_est, fs, N_crop, tau_est)
-        crlb_std_f = np.sqrt(crlb_var_f) if np.isfinite(crlb_var_f) else np.inf
+        result["filename"] = Path(filepath).name
+        result["type"] = file_type
+        result["V2"] = V2
 
         if logger.isEnabledFor(logging.INFO):
             logger.info(
@@ -404,32 +577,13 @@ class RingDownAnalyzer:
                 extra={
                     "event": "analysis_complete",
                     "filepath": str(filepath),
-                    "f_nls": float(f_nls),
-                    "f_dft": float(f_dft),
-                    "tau_est": float(tau_est),
-                    "crlb_std_f": float(crlb_std_f) if np.isfinite(crlb_std_f) else None,
+                    "f_nls": float(result["f_nls"]),
+                    "f_dft": float(result["f_dft"]),
+                    "tau_est": float(result["tau_est"]),
+                    "crlb_std_f": float(result["crlb_std_f"])
+                    if np.isfinite(result["crlb_std_f"])
+                    else None,
                 },
             )
 
-        return {
-            "filename": Path(filepath).name,
-            "type": file_type,
-            "t": t,
-            "data": data,
-            "V2": V2,
-            "t_crop": t_crop,
-            "data_cropped": data_cropped,
-            "fs": fs,
-            "tau_est": tau_est,
-            "f_nls": f_nls,
-            "f_dft": f_dft,
-            "Q_nls": Q_nls,
-            "Q_dft": Q_dft,
-            "A0_est": A0_est,
-            "sigma_est": sigma_est,
-            "crlb_std_f": crlb_std_f,
-            "N": len(t),
-            "N_crop": len(t_crop),
-            "T": t[-1],
-            "T_crop": t_crop[-1] if len(t_crop) > 0 else 0,
-        }
+        return result

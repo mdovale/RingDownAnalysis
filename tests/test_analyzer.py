@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from ringdownanalysis.analyzer import RingDownAnalyzer
@@ -141,6 +142,69 @@ class TestRingDownAnalyzer:
             assert np.isfinite(r["f_dft"])
             assert r["N_crop"] > 0
             assert r["tau_est"] > 0
+
+    def test_analyze_array_numpy_t_data(self, sample_ringdown_signal):
+        """Test analyze_array with numpy t and data arrays."""
+        t, data, fs = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        result = analyzer.analyze_array(t=t, data=data)
+        assert "fs" in result
+        assert "tau_est" in result
+        assert "f_nls" in result
+        assert "f_dft" in result
+        assert "crlb_std_f" in result
+        assert "filename" not in result
+        assert np.isfinite(result["f_nls"])
+        assert np.isfinite(result["f_dft"])
+        assert result["N"] == len(t)
+
+    def test_analyze_array_data_fs(self, sample_ringdown_signal):
+        """Test analyze_array with data and fs (t inferred)."""
+        t, data, fs = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        result = analyzer.analyze_array(data=data, fs=fs)
+        assert np.isfinite(result["f_nls"])
+        assert result["N"] == len(data)
+
+    def test_analyze_array_pandas_dataframe(self, sample_ringdown_signal):
+        """Test analyze_array with pandas DataFrame."""
+        t, data, fs = sample_ringdown_signal
+        df = pd.DataFrame({"time": t, "phase": data})
+        analyzer = RingDownAnalyzer()
+        result = analyzer.analyze_array(
+            data=df, time_col="time", data_col="phase"
+        )
+        assert np.isfinite(result["f_nls"])
+        assert result["N"] == len(df)
+
+    def test_analyze_array_pandas_series(self, sample_ringdown_signal):
+        """Test analyze_array with pandas Series for data, t as array."""
+        t, data, fs = sample_ringdown_signal
+        series = pd.Series(data)
+        analyzer = RingDownAnalyzer()
+        result = analyzer.analyze_array(t=t, data=series)
+        assert np.isfinite(result["f_nls"])
+
+    def test_analyze_array_no_data_raises(self):
+        """Test analyze_array raises when data is None."""
+        analyzer = RingDownAnalyzer()
+        with pytest.raises(ValueError, match="data is required"):
+            analyzer.analyze_array(t=np.linspace(0, 1, 100))
+
+    def test_analyze_array_no_t_or_fs_raises(self):
+        """Test analyze_array raises when neither t nor fs provided."""
+        analyzer = RingDownAnalyzer()
+        data = np.cos(np.linspace(0, 10 * np.pi, 1000))
+        with pytest.raises(ValueError, match="Either t or fs must be provided"):
+            analyzer.analyze_array(data=data)
+
+    def test_analyze_array_mismatched_lengths_raises(self):
+        """Test analyze_array raises when t and data lengths differ."""
+        analyzer = RingDownAnalyzer()
+        t = np.linspace(0, 1, 100)
+        data = np.cos(np.linspace(0, 10 * np.pi, 50))
+        with pytest.raises(ValueError, match="same length"):
+            analyzer.analyze_array(t=t, data=data)
 
 
 class TestAnalyzerEdgeCases:
