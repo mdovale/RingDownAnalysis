@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ringdownanalysis"
-version = "1.0.0"
+version = "1.0.1"
 description = "Frequency estimation of ring-down signals using NLS and DFT methods"
 readme = "README.md"
 requires-python = ">=3.8"

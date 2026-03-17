@@ -208,7 +208,7 @@ class RingDownAnalyzer:
                     extra={
                         "event": "tau_estimation_failed",
                         "tau_init": float(tau_init),
-                        "message": res_tau.message,
+                        "fit_message": res_tau.message,
                         "nfev": res_tau.nfev,
                     },
                 )
@@ -363,7 +363,7 @@ class RingDownAnalyzer:
                     "noise_estimation_fallback",
                     extra={
                         "event": "noise_estimation_fallback",
-                        "message": res_fit.message,
+                        "fit_message": res_fit.message,
                         "nfev": res_fit.nfev,
                     },
                 )

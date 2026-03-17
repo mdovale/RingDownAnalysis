@@ -375,7 +375,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                         extra={
                             "event": "nls_estimation_failed",
                             "method": "nls_tau_known",
-                            "message": res.message,
+                            "fit_message": res.message,
                             "nfev": res.nfev,
                         },
                     )
@@ -416,7 +416,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                         extra={
                             "event": "nls_estimation_failed",
                             "method": "nls_tau_unknown",
-                            "message": res.message,
+                            "fit_message": res.message,
                             "nfev": res.nfev,
                         },
                     )
@@ -519,7 +519,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                         extra={
                             "event": "nls_full_estimation_failed",
                             "method": "nls_tau_unknown",
-                            "message": res.message,
+                            "fit_message": res.message,
                             "nfev": res.nfev,
                         },
                     )
@@ -756,7 +756,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
                     "dft_full_tau_estimation_failed",
                     extra={
                         "event": "dft_full_tau_estimation_failed",
-                        "message": res.message,
+                        "fit_message": res.message,
                         "nfev": res.nfev,
                     },
                 )

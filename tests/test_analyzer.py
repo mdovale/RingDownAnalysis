@@ -245,7 +245,7 @@ class TestAnalyzerEdgeCases:
             Path(filepath).unlink(missing_ok=True)
 
     def test_analyze_file_very_short_signal_fails_or_raises(self):
-        """Test very short signal (len < min_samples) fails or raises."""
+        """Test very short signal (len < min_samples) completes without KeyError from logging."""
         t = np.linspace(0, 0.01, 50)
         phase = 0.1 * np.cos(2 * np.pi * 5.0 * t)
         with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
@@ -253,7 +253,8 @@ class TestAnalyzerEdgeCases:
             filepath = f.name
         try:
             analyzer = RingDownAnalyzer()
-            with pytest.raises((ValueError, IndexError, KeyError)):
-                analyzer.analyze_file(filepath)
+            # Should not raise KeyError (logging reserves 'message'); may raise ValueError/IndexError or return
+            result = analyzer.analyze_file(filepath)
+            assert result is not None
         finally:
             Path(filepath).unlink(missing_ok=True)
