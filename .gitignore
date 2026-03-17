@@ -108,9 +108,11 @@ docs/api/_build/
 .env.*.local
 
 # Distribution / packaging
-.Python
 *.manifest
 *.spec
+
+# Ruff
+.ruff_cache/
 
 # mypy
 .mypy_cache/

@@ -171,9 +171,7 @@ class TestRingDownAnalyzer:
         t, data, fs = sample_ringdown_signal
         df = pd.DataFrame({"time": t, "phase": data})
         analyzer = RingDownAnalyzer()
-        result = analyzer.analyze_array(
-            data=df, time_col="time", data_col="phase"
-        )
+        result = analyzer.analyze_array(data=df, time_col="time", data_col="phase")
         assert np.isfinite(result["f_nls"])
         assert result["N"] == len(df)
 

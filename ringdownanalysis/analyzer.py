@@ -71,9 +71,7 @@ def _parse_array_input(
         raise ValueError("Either t or fs must be provided when data is not a DataFrame")
 
     if len(t_arr) != len(data_arr):
-        raise ValueError(
-            f"t and data must have same length, got {len(t_arr)} and {len(data_arr)}"
-        )
+        raise ValueError(f"t and data must have same length, got {len(t_arr)} and {len(data_arr)}")
     if len(t_arr) < 2:
         raise ValueError("At least 2 samples required for analysis")
 
@@ -503,9 +501,7 @@ class RingDownAnalyzer:
                 },
             )
 
-        result = self._run_analysis_pipeline(
-            t_arr, data_arr, fs, max_tau_multiplier
-        )
+        result = self._run_analysis_pipeline(t_arr, data_arr, fs, max_tau_multiplier)
 
         if logger.isEnabledFor(logging.INFO):
             logger.info(
@@ -561,9 +557,7 @@ class RingDownAnalyzer:
         t, data, V2, file_type = RingDownDataLoader.load(filepath)
         fs = 1.0 / np.mean(np.diff(t))
 
-        result = self._run_analysis_pipeline(
-            t, data, fs, max_tau_multiplier
-        )
+        result = self._run_analysis_pipeline(t, data, fs, max_tau_multiplier)
 
         result["filename"] = Path(filepath).name
         result["type"] = file_type
