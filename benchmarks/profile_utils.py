@@ -8,7 +8,7 @@ import cProfile
 import io
 import pstats
 from contextlib import redirect_stdout
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -54,7 +54,7 @@ class Profiler:
         self,
         sort_by: str = "cumulative",
         top_n: int = 20,
-    ) -> List[Tuple[str, int, float, float, str]]:
+    ) -> list[tuple[str, int, float, float, str]]:
         """
         Get top N functions by time.
 
@@ -112,7 +112,7 @@ class Profiler:
         self,
         min_time: float = 0.01,
         min_calls: int = 1,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Identify bottlenecks based on time thresholds.
 
@@ -401,7 +401,7 @@ def analyze_bottlenecks(
     profiler: Profiler,
     min_time: float = 0.01,
     min_calls: int = 1,
-) -> Dict:
+) -> dict:
     """
     Analyze bottlenecks from profiler results.
 
@@ -435,7 +435,7 @@ def analyze_bottlenecks(
     }
 
 
-def print_bottleneck_report(analysis: Dict):
+def print_bottleneck_report(analysis: dict):
     """Print formatted bottleneck report."""
     print("=" * 80)
     print("BOTTLENECK ANALYSIS REPORT")

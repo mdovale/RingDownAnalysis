@@ -5,8 +5,6 @@ Defines critical workloads and representative input sizes for performance testin
 Uses pytest-benchmark for reliable, repeatable timing measurements.
 """
 
-from typing import Dict
-
 import numpy as np
 import pytest
 
@@ -498,11 +496,11 @@ class TestMonteCarlo:
 # ============================================================================
 
 
-def get_workload_sizes() -> Dict:
+def get_workload_sizes() -> dict:
     """Get workload size definitions."""
     return WORKLOAD_SIZES.copy()
 
 
-def get_standard_params() -> Dict:
+def get_standard_params() -> dict:
     """Get standard signal parameters."""
     return STANDARD_PARAMS.copy()

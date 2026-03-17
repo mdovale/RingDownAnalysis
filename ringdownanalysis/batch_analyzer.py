@@ -12,7 +12,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -21,7 +21,7 @@ from .analyzer import RingDownAnalyzer
 logger = logging.getLogger(__name__)
 
 
-def _result_uncertainty_std(result: Dict) -> float:
+def _result_uncertainty_std(result: dict) -> float:
     """Return the preferred per-record frequency uncertainty summary."""
     if "uncertainty_std_f" in result:
         return float(result["uncertainty_std_f"])
@@ -46,8 +46,8 @@ class ProcessResult:
         List of (filepath, exception) for files that failed to process
     """
 
-    results: List[Dict]
-    failed_files: List[Tuple[str, BaseException]]
+    results: list[dict]
+    failed_files: list[tuple[str, BaseException]]
 
     def __len__(self) -> int:
         """Return number of successful results."""
@@ -62,12 +62,12 @@ class ProcessResult:
         return self.results[index]
 
     @property
-    def successes(self) -> List[Dict]:
+    def successes(self) -> list[dict]:
         """Alias for results (successful analyses)."""
         return self.results
 
     @property
-    def failures(self) -> List[Tuple[str, BaseException]]:
+    def failures(self) -> list[tuple[str, BaseException]]:
         """Alias for failed_files."""
         return self.failed_files
 
@@ -76,7 +76,7 @@ class ProcessResult:
         return len(self.failed_files) > 0
 
 
-def _process_single_file(filepath: str) -> Dict:
+def _process_single_file(filepath: str) -> dict:
     """
     Helper function to process a single file in parallel.
 
@@ -121,11 +121,11 @@ class BatchRingDownAnalyzer:
             RingDownAnalyzer instance to use. If None, creates default.
         """
         self.analyzer = analyzer or RingDownAnalyzer()
-        self.results: List[Dict] = []
+        self.results: list[dict] = []
 
     def process_files(
         self,
-        filepaths: List[str],
+        filepaths: list[str],
         verbose: bool = True,
         n_jobs: Optional[int] = None,
     ) -> ProcessResult:
@@ -151,7 +151,7 @@ class BatchRingDownAnalyzer:
             len(), iteration, and indexing work on successful results.
         """
         self.results = []
-        failed_files: List[Tuple[str, BaseException]] = []
+        failed_files: list[tuple[str, BaseException]] = []
 
         if not filepaths:
             return ProcessResult(results=[], failed_files=[])
@@ -351,7 +351,7 @@ class BatchRingDownAnalyzer:
         pattern: str = "*",
         verbose: bool = True,
         n_jobs: Optional[int] = None,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Process all data files in a directory.
 
@@ -417,7 +417,7 @@ class BatchRingDownAnalyzer:
 
         return self.process_files(all_files, verbose=verbose, n_jobs=n_jobs)
 
-    def calculate_q_factors(self) -> List[float]:
+    def calculate_q_factors(self) -> list[float]:
         """
         Calculate Q factors for all processed results.
 
@@ -443,7 +443,7 @@ class BatchRingDownAnalyzer:
 
         return q_factors
 
-    def get_summary_table(self) -> Dict:
+    def get_summary_table(self) -> dict:
         """
         Create a summary table with all analysis results.
 
@@ -487,7 +487,7 @@ class BatchRingDownAnalyzer:
 
         return {"data": summary_data, "columns": columns}
 
-    def consistency_analysis(self) -> Dict:
+    def consistency_analysis(self) -> dict:
         """
         Perform consistency analysis across all realizations.
 
@@ -598,7 +598,7 @@ class BatchRingDownAnalyzer:
             "dft_range": (np.min(f_dft_all), np.max(f_dft_all)),
         }
 
-    def crlb_comparison_analysis(self) -> Dict:
+    def crlb_comparison_analysis(self) -> dict:
         """
         Compare frequency estimation differences with CRLB.
 
@@ -678,7 +678,7 @@ class BatchRingDownAnalyzer:
             "ratio_statistics": ratio_stats,
         }
 
-    def get_q_factor_statistics(self) -> Dict:
+    def get_q_factor_statistics(self) -> dict:
         """
         Calculate Q factor statistics.
 
@@ -711,7 +711,7 @@ class BatchRingDownAnalyzer:
             "range": np.max(q_values) - np.min(q_values),
         }
 
-    def get_consistency_table(self) -> Dict:
+    def get_consistency_table(self) -> dict:
         """
         Create a table showing frequency estimates and deviations from mean.
 

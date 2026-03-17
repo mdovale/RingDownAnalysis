@@ -3,7 +3,7 @@ Monte Carlo analysis for comparing frequency estimation methods.
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -234,7 +234,7 @@ class MonteCarloAnalyzer:
         seed: int = 42,
         n_workers: Optional[int] = None,
         timeout_per_trial: float = 30.0,
-    ) -> Dict:
+    ) -> dict:
         """
         Perform Monte Carlo analysis.
 

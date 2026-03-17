@@ -444,8 +444,9 @@ class RingDownAnalyzer:
                     },
                 )
 
+            a0_safe: float = max(float(A0_est), float(np.finfo(np.float64).eps))
             return NoiseEstimate(
-                A0=max(A0_est, np.finfo(np.float64).eps),
+                A0=a0_safe,
                 sigma=sigma_est,
                 sigma_mle=sigma_mle,
                 noise_dof=int(dof),

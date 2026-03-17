@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import numpy as np
 from scipy.optimize import curve_fit, least_squares
@@ -57,17 +57,17 @@ class EstimationResult(NamedTuple):
 
     f: float
     """Estimated frequency (Hz)"""
-    tau: Optional[float]
+    tau: float | None
     """Estimated decay time constant (s), or None if not estimated"""
-    Q: Optional[float]
+    Q: float | None
     """Estimated quality factor, or None if tau is not available"""
     success: bool = True
     """Whether the estimator converged without falling back to the initializer"""
     used_fallback: bool = False
     """Whether the result fell back to a heuristic initializer"""
-    message: Optional[str] = None
+    message: str | None = None
     """Fit termination or fallback message"""
-    nfev: Optional[int] = None
+    nfev: int | None = None
     """Number of function evaluations used by the fit, if available"""
 
 
@@ -142,16 +142,17 @@ def _sanitize_initial_parameters(
 
 def _sanitize_tau_guess(tau_init: float | None, t: np.ndarray) -> tuple[float, float, float]:
     """Return a feasible tau initialization and matching lower/upper bounds."""
-    tau_lower = max(float(t[1]), np.finfo(np.float64).eps)
-    tau_upper_default = max(10.0 * float(t[-1]), tau_lower * 10.0)
+    eps = float(np.finfo(np.float64).eps)
+    tau_lower = float(max(float(t[1]), eps))
+    tau_upper_default = float(max(10.0 * float(t[-1]), tau_lower * 10.0))
 
     if tau_init is None or not np.isfinite(tau_init) or tau_init <= 0:
-        tau_guess = max(0.5 * float(t[-1]), tau_lower * 2.0)
+        tau_guess = float(max(0.5 * float(t[-1]), tau_lower * 2.0))
     else:
         tau_guess = float(tau_init)
 
-    tau_upper = max(tau_upper_default, tau_guess * 1.1)
-    tau_guess = min(max(tau_guess, tau_lower * 1.01), tau_upper * 0.99)
+    tau_upper = float(max(tau_upper_default, tau_guess * 1.1))
+    tau_guess = float(min(max(tau_guess, tau_lower * 1.01), tau_upper * 0.99))
 
     return tau_guess, tau_lower, tau_upper
 
@@ -370,7 +371,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
     Frequency estimation using nonlinear least squares with ring-down model.
     """
 
-    def __init__(self, tau_known: Optional[float] = None):
+    def __init__(self, tau_known: float | None = None):
         """
         Initialize NLS frequency estimator.
 
@@ -398,6 +399,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         **kwargs,
     ) -> EstimationResult:
         """Estimate frequency when tau is fixed a priori."""
+        assert self.tau_known is not None
+        tau = self.tau_known
         N = len(x)
         t = np.arange(N) / fs
         f0_init, phi0_init, A0_init, c0 = _sanitize_initial_parameters(x, fs, initial_params)
@@ -405,8 +408,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
         if not _has_resolved_ac_content(x):
             return EstimationResult(
                 f=f0_init,
-                tau=self.tau_known,
-                Q=np.pi * f0_init * self.tau_known,
+                tau=tau,
+                Q=np.pi * f0_init * tau,
                 success=False,
                 used_fallback=True,
                 message="Signal has no resolved AC content after demeaning",
@@ -415,7 +418,7 @@ class NLSFrequencyEstimator(FrequencyEstimator):
 
         def residuals(p):
             A0, f, phi, c = p
-            return (A0 * np.exp(-t / self.tau_known) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
+            return (A0 * np.exp(-t / tau) * np.cos(2.0 * np.pi * f * t + phi) + c) - x
 
         df = fs / N
         f_low = max(0.0, f0_init - max(0.2 * f0_init, 2 * df))
@@ -450,8 +453,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                 )
             return EstimationResult(
                 f=f0_init,
-                tau=self.tau_known,
-                Q=np.pi * f0_init * self.tau_known,
+                tau=tau,
+                Q=np.pi * f0_init * tau,
                 success=False,
                 used_fallback=True,
                 message=f"NLS tau-known fit failed: {res.message}",
@@ -472,8 +475,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
                 )
             return EstimationResult(
                 f=f0_init,
-                tau=self.tau_known,
-                Q=np.pi * f0_init * self.tau_known,
+                tau=tau,
+                Q=np.pi * f0_init * tau,
                 success=False,
                 used_fallback=True,
                 message="NLS tau-known fit failed frequency sanity check",
@@ -482,8 +485,8 @@ class NLSFrequencyEstimator(FrequencyEstimator):
 
         return EstimationResult(
             f=float(f_hat),
-            tau=float(self.tau_known),
-            Q=float(np.pi * f_hat * self.tau_known),
+            tau=float(tau),
+            Q=float(np.pi * f_hat * tau),
             success=True,
             used_fallback=False,
             message=res.message,

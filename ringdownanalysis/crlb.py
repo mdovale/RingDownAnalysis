@@ -2,8 +2,6 @@
 Cramér-Rao Lower Bound (CRLB) calculation for ring-down signals.
 """
 
-from typing import Tuple
-
 import numpy as np
 
 
@@ -18,7 +16,7 @@ class CRLBCalculator:
         fs: float,
         N: int,
         tau: float,
-    ) -> Tuple[float, float, float]:
+    ) -> tuple[float, float, float]:
         """
         Compute weighted sums S_0, S_1, S_2 used in CRLB calculations.
 
