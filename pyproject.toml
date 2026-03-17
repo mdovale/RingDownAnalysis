@@ -11,7 +11,7 @@ requires-python = ">=3.8"
 authors = [
     {name = "Miguel Dovale", email = "mikedovale@pm.me"}
 ]
-license = "BSD-3-Clause"
+license = {text = "BSD-3-Clause"}
 keywords = ["signal-processing", "frequency-estimation", "ring-down", "cramér-rao", "crlb"]
 classifiers = [
     "Development Status :: 3 - Alpha",
