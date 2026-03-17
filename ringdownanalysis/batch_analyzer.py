@@ -458,6 +458,7 @@ class BatchRingDownAnalyzer:
                     "T_crop (s)": f"{r['T_crop']:.2f}",
                     "fs (Hz)": f"{r['fs']:.2f}",
                     "tau_est (s)": f"{r['tau_est']:.2f}",
+                    "tau_nls (s)": f"{r['tau_nls']:.2f}" if r.get("tau_nls") is not None else "—",
                     "f_NLS (Hz)": f"{r['f_nls']:.6f}",
                     "f_DFT (Hz)": f"{r['f_dft']:.6f}",
                     "|f_NLS - f_DFT| (Hz)": f"{abs(r['f_nls'] - r['f_dft']):.6e}",

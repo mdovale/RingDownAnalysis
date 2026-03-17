@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -19,9 +18,6 @@ from .estimators import (
     _estimate_initial_parameters_from_dft,
     _estimate_initial_tau_from_envelope,
 )
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +407,7 @@ class RingDownAnalyzer:
         f_dft = result_dft.f
         Q_nls = result_nls.Q
         Q_dft = result_dft.Q
+        tau_nls = result_nls.tau
 
         A0_est, sigma_est = self.estimate_noise_parameters(
             data_cropped, t_crop, tau_est, fs, initial_params=initial_params_cropped
@@ -428,6 +425,7 @@ class RingDownAnalyzer:
             "data_cropped": data_cropped,
             "fs": fs,
             "tau_est": tau_est,
+            "tau_nls": tau_nls,
             "f_nls": f_nls,
             "f_dft": f_dft,
             "Q_nls": Q_nls,
