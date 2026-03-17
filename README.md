@@ -371,7 +371,7 @@ See `benchmarks/README.md` for detailed information on benchmarking and profilin
 GitHub Actions run on every push and pull request:
 
 - **Lint**: Ruff check and format
-- **Test**: pytest with coverage on Python 3.8, 3.11, 3.12
+- **Test**: pytest with coverage on Python 3.9, 3.11, 3.12
 - **Typecheck**: mypy
 
 Coverage is uploaded to [Codecov](https://codecov.io) (optional; add `CODECOV_TOKEN` secret for private repos).
