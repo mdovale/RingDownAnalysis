@@ -8,6 +8,7 @@ File input assumptions:
 """
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +32,24 @@ def _check_file_size(filepath: str, max_size_bytes: int) -> None:
         )
 
 
+def _validate_finite_channel(values: np.ndarray, channel: str, filepath: str) -> None:
+    """Raise ValueError if a loaded data channel contains NaN or Inf."""
+    arr = np.asarray(values, dtype=np.float64)
+    if arr.ndim != 1:
+        raise ValueError(
+            f"{channel} channel in {filepath} must be 1-dimensional after loading, got shape {arr.shape}"
+        )
+    if len(arr) == 0:
+        raise ValueError(f"{channel} channel in {filepath} contains no samples")
+    if not np.all(np.isfinite(arr)):
+        bad_idx = int(np.flatnonzero(~np.isfinite(arr))[0])
+        bad_value = arr[bad_idx]
+        raise ValueError(
+            f"{channel} channel in {filepath} must contain only finite values; "
+            f"found {bad_value!r} at row {bad_idx}"
+        )
+
+
 class RingDownDataLoader:
     """
     Loads ring-down measurement data from CSV and MAT files.
@@ -43,10 +62,11 @@ class RingDownDataLoader:
     @staticmethod
     def _is_data_line(line: str) -> bool:
         """Check if a line contains numeric data (not a header or comment)."""
-        if not line or line.startswith("%"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("%"):
             return False
 
-        parts = line.split(",")
+        parts = stripped.split(",")
         if len(parts) < 4:
             return False
 
@@ -55,6 +75,38 @@ class RingDownDataLoader:
             return True
         except ValueError:
             return False
+
+    @staticmethod
+    def _is_header_line(line: str) -> bool:
+        """Return True for common leading CSV header rows."""
+        stripped = line.strip()
+        if not stripped or stripped.startswith("%"):
+            return False
+
+        parts = [part.strip().lower() for part in stripped.split(",")]
+        if len(parts) < 4:
+            return False
+        time_names = {"time", "timestamp", "t", "time_s"}
+        phase_names = {"phase", "phase_cycles", "signal", "data"}
+        return parts[0] in time_names or parts[3] in phase_names
+
+    @staticmethod
+    def _leading_non_data_rows(filepath: str) -> Iterable[int]:
+        """Return leading header/comment rows to skip before the first numeric data row."""
+        skiprows = []
+        with open(filepath, encoding="utf-8") as f:
+            for row_idx, line in enumerate(f):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("%"):
+                    skiprows.append(row_idx)
+                    continue
+                if RingDownDataLoader._is_header_line(line):
+                    skiprows.append(row_idx)
+                    continue
+                if RingDownDataLoader._is_data_line(line):
+                    break
+                break
+        return skiprows
 
     @staticmethod
     def load_csv(
@@ -88,10 +140,11 @@ class RingDownDataLoader:
         if max_file_size_bytes is not None:
             _check_file_size(filepath, max_file_size_bytes)
 
-        # Use pandas for fast CSV parsing
-        # Skip comment lines (starting with '%') and header rows
+        # Use pandas for fast CSV parsing.
+        # Skip comment lines (starting with '%') and leading plain-text header rows.
         # Read only columns 0 (time) and 3 (phase)
         try:
+            skiprows = RingDownDataLoader._leading_non_data_rows(filepath)
             df = pd.read_csv(
                 filepath,
                 comment="%",  # Skip lines starting with '%'
@@ -99,7 +152,8 @@ class RingDownDataLoader:
                 usecols=[0, 3],  # Only read time (col 0) and phase (col 3)
                 dtype=float,
                 engine="c",  # Use C engine for better performance
-                na_values=[],  # Don't treat any values as NaN
+                na_values=[],  # Use pandas' default NaN/Inf parsing for validation below
+                skiprows=skiprows,
                 skipinitialspace=True,  # Skip whitespace after delimiter
             )
         except (pd.errors.EmptyDataError, ValueError) as e:
@@ -127,6 +181,8 @@ class RingDownDataLoader:
         # Extract time and phase columns
         t_raw = df.iloc[:, 0].values  # Column 0: time
         data_raw = df.iloc[:, 1].values  # Column 1 (was column 3): phase
+        _validate_finite_channel(t_raw, "time", filepath)
+        _validate_finite_channel(data_raw, "phase", filepath)
 
         # Time starts from 0
         t = t_raw - t_raw[0]
@@ -216,14 +272,24 @@ class RingDownDataLoader:
             )
             raise ValueError(f"Invalid MAT file structure: {e}") from e
 
+        moku_data = np.asarray(moku_data)
+        if moku_data.ndim != 2 or moku_data.shape[0] == 0 or moku_data.shape[1] < 4:
+            raise ValueError(
+                "Invalid MAT file structure: moku.data must be a non-empty 2D array "
+                f"with at least 4 columns, got shape {moku_data.shape}"
+            )
+
         # Extract time (column 1, index 0) and phase (column 4, index 3)
         t_raw = moku_data[:, 0].flatten()
         data_raw = moku_data[:, 3].flatten()  # Column 4 is index 3
+        _validate_finite_channel(t_raw, "time", filepath)
+        _validate_finite_channel(data_raw, "phase", filepath)
 
         # Check if V2 exists (column 9, index 8)
         V2 = None
         if moku_data.shape[1] > 8:
             V2_raw = moku_data[:, 8].flatten()  # Column 9 is index 8
+            _validate_finite_channel(V2_raw, "V2", filepath)
             V2 = detrend(V2_raw, type="constant")
 
         # Time starts from 0

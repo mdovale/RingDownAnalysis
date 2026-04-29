@@ -18,6 +18,7 @@ from .estimators import (
     NLSFrequencyEstimator,
     _estimate_initial_parameters_from_dft,
     _estimate_initial_tau_from_envelope,
+    _estimate_initial_tau_with_method,
     _sanitize_initial_parameters,
     _sanitize_tau_guess,
 )
@@ -93,6 +94,39 @@ def _parse_array_input(
         raise ValueError("Signal data must contain only finite values")
 
     return t_arr, data_arr
+
+
+def _validate_signal_data(data: np.ndarray, *, source: str = "Signal data") -> np.ndarray:
+    """Return a 1D finite signal array or raise a clear ValueError."""
+    data_arr = np.asarray(data, dtype=np.float64)
+    if data_arr.ndim != 1:
+        raise ValueError(f"{source} must be 1-dimensional, got shape {data_arr.shape}")
+    if len(data_arr) < 2:
+        raise ValueError("At least 2 samples required for analysis")
+    if not np.all(np.isfinite(data_arr)):
+        raise ValueError(f"{source} must contain only finite values")
+    return data_arr
+
+
+def _validate_max_tau_multiplier(max_tau_multiplier: float) -> float:
+    """Validate crop multiplier before it can silently produce an empty crop."""
+    value = float(max_tau_multiplier)
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError(
+            f"max_tau_multiplier must be positive and finite, got {max_tau_multiplier}"
+        )
+    return value
+
+
+def _near_bound(
+    value: float | None, lower: float, upper: float, *, rtol: float = 1e-4
+) -> tuple[bool, bool]:
+    """Return lower/upper bound-hit flags for tau-like estimates."""
+    if value is None or not np.isfinite(value):
+        return False, False
+    span = max(abs(upper - lower), abs(upper), abs(lower), 1.0)
+    tol = rtol * span
+    return abs(float(value) - lower) <= tol, abs(float(value) - upper) <= tol
 
 
 def _validate_uniform_timebase(
@@ -331,6 +365,9 @@ class RingDownAnalyzer:
         (t_crop, data_cropped) : tuple
             Cropped time and signal arrays
         """
+        max_tau_multiplier = _validate_max_tau_multiplier(max_tau_multiplier)
+        if not np.isfinite(tau_est) or tau_est <= 0:
+            raise ValueError(f"tau_est must be positive and finite, got {tau_est}")
         t_crop_max = max_tau_multiplier * tau_est
         crop_idx = t <= t_crop_max
         t_crop = t[crop_idx]
@@ -502,6 +539,7 @@ class RingDownAnalyzer:
         gtol: float | None = None,
     ) -> dict:
         """Run the full analysis pipeline on (t, data) arrays."""
+        max_tau_multiplier = _validate_max_tau_multiplier(max_tau_multiplier)
         if initial_params is not None:
             initial_params_full = _sanitize_initial_parameters(data, fs, initial_params)
             initial_params_cropped = initial_params_full
@@ -509,12 +547,21 @@ class RingDownAnalyzer:
             initial_params_full = _estimate_initial_parameters_from_dft(data, fs)
             initial_params_cropped = None  # Will compute after crop
 
+        t_norm = t - t[0]
+        if tau_init is None:
+            tau_initialization = _estimate_initial_tau_with_method(data, t_norm)
+        else:
+            tau_initialization = (float(tau_init), "user_provided_tau_init")
+        tau_seed = float(tau_initialization[0])
+        tau_seed_method = str(tau_initialization[1])
+        tau_full_init, tau_full_lower, tau_full_upper = _sanitize_tau_guess(tau_seed, t_norm)
+
         tau_est = self.estimate_tau(
             data,
             t,
             fs,
             initial_params=initial_params_full,
-            tau_init=tau_init,
+            tau_init=tau_seed,
             max_nfev=max_nfev,
             ftol=ftol,
             xtol=xtol,
@@ -533,6 +580,13 @@ class RingDownAnalyzer:
         if initial_params_cropped is None:
             initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
 
+        t_crop_norm = t_crop - t_crop[0]
+        tau_cropped_seed = tau_est
+        tau_cropped_init, tau_cropped_lower, tau_cropped_upper = _sanitize_tau_guess(
+            tau_cropped_seed,
+            t_crop_norm,
+        )
+
         fit_kwargs = {}
         if max_nfev is not None:
             fit_kwargs["max_nfev"] = max_nfev
@@ -542,7 +596,7 @@ class RingDownAnalyzer:
             fit_kwargs["xtol"] = xtol
         if gtol is not None:
             fit_kwargs["gtol"] = gtol
-        fit_kwargs["tau_init"] = tau_init if tau_init is not None else tau_est
+        fit_kwargs["tau_init"] = tau_cropped_init
 
         result_nls = self.nls_estimator.estimate_full(
             data_cropped,
@@ -564,6 +618,20 @@ class RingDownAnalyzer:
         tau_nls = result_nls.tau
         tau_dft = result_dft.tau
         tau_model = tau_nls if tau_nls is not None else tau_dft if tau_dft is not None else tau_est
+        tau_est_at_lower, tau_est_at_upper = _near_bound(tau_est, tau_full_lower, tau_full_upper)
+        tau_nls_at_lower, tau_nls_at_upper = _near_bound(
+            tau_nls, tau_cropped_lower, tau_cropped_upper
+        )
+        tau_dft_at_lower, tau_dft_at_upper = _near_bound(
+            tau_dft, tau_cropped_lower, tau_cropped_upper
+        )
+        T_over_tau_est = float(t[-1] / tau_est) if tau_est > 0 else np.inf
+        tau_est_low_confidence = bool(
+            tau_seed_method.startswith("record_half_duration_fallback")
+            or T_over_tau_est < 1.0
+            or tau_est_at_lower
+            or tau_est_at_upper
+        )
         noise_estimate = self.estimate_noise_parameters(
             data_cropped,
             t_crop,
@@ -596,14 +664,33 @@ class RingDownAnalyzer:
             "t_crop": t_crop,
             "data_cropped": data_cropped,
             "fs": fs,
+            "tau_seed": tau_seed,
+            "tau_seed_method": tau_seed_method,
+            "tau_full_init": tau_full_init,
+            "tau_full_lower": tau_full_lower,
+            "tau_full_upper": tau_full_upper,
             "tau_est": tau_est,
+            "tau_est_at_lower_bound": tau_est_at_lower,
+            "tau_est_at_upper_bound": tau_est_at_upper,
+            "T_over_tau_est": T_over_tau_est,
+            "tau_est_low_confidence": tau_est_low_confidence,
+            "tau_cropped_seed": tau_cropped_seed,
+            "tau_cropped_seed_source": "full_record_tau_est",
+            "tau_cropped_init": tau_cropped_init,
+            "tau_cropped_lower": tau_cropped_lower,
+            "tau_cropped_upper": tau_cropped_upper,
             "tau_nls": tau_nls,
             "tau_dft": tau_dft,
             "tau_model": tau_model,
+            "tau_nls_at_lower_bound": tau_nls_at_lower,
+            "tau_nls_at_upper_bound": tau_nls_at_upper,
+            "tau_dft_at_lower_bound": tau_dft_at_lower,
+            "tau_dft_at_upper_bound": tau_dft_at_upper,
             "f_nls": f_nls,
             "f_dft": f_dft,
             "Q_nls": Q_nls,
             "Q_dft": Q_dft,
+            "Q_pre_crop": float(np.pi * f_nls * tau_est) if np.isfinite(f_nls) else np.nan,
             "nls_success": result_nls.success,
             "dft_success": result_dft.success,
             "nls_used_fallback": result_nls.used_fallback,
@@ -621,12 +708,17 @@ class RingDownAnalyzer:
             "plugin_crlb_std_f": plugin_crlb_std_f,
             "uncertainty_std_f": plugin_crlb_std_f,
             "uncertainty_method": (
-                "plugin_crlb_known_tau_with_residual_dof_correction"
+                "plugin_crlb_fitted_tau_with_residual_dof_correction"
                 if uncertainty_valid
                 else "unavailable"
             ),
+            "uncertainty_description": (
+                "Plug-in frequency diagnostic computed from fitted/cropped data; "
+                "crlb_std_f is a backward-compatible alias."
+            ),
             "uncertainty_valid": uncertainty_valid,
             "crlb_std_f": plugin_crlb_std_f,
+            "crlb_std_f_is_alias": True,
             "N": len(t),
             "N_crop": len(t_crop),
             "T": t[-1],
@@ -700,6 +792,7 @@ class RingDownAnalyzer:
         t_arr, data_arr = _parse_array_input(
             t=t, data=data, fs=fs, time_col=time_col, data_col=data_col
         )
+        data_arr = _validate_signal_data(data_arr)
         if t is not None or hasattr(data, "iloc"):
             t_arr, fs = _validate_uniform_timebase(t_arr)
         else:
@@ -801,8 +894,10 @@ class RingDownAnalyzer:
                 },
             )
 
+        max_tau_multiplier = _validate_max_tau_multiplier(max_tau_multiplier)
         t, data, V2, file_type = RingDownDataLoader.load(filepath)
         t, fs = _validate_uniform_timebase(t)
+        data = _validate_signal_data(data, source=f"Signal data in {filepath}")
 
         result = self._run_analysis_pipeline(
             t,

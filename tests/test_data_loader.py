@@ -45,6 +45,44 @@ class TestRingDownDataLoader:
         finally:
             Path(filepath).unlink(missing_ok=True)
 
+    def test_load_csv_plain_header_is_skipped(self):
+        """Test loading CSV files with a non-comment text header."""
+        csv_content = """time,a,b,phase
+0.0,0,0,0.0
+0.01,0,0,0.1
+0.02,0,0,0.2
+"""
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
+            f.write(csv_content)
+            filepath = f.name
+
+        try:
+            t, data = RingDownDataLoader.load_csv(filepath)
+            assert len(t) == 3
+            assert np.isclose(t[-1], 0.02)
+            assert np.all(np.isfinite(data))
+        finally:
+            Path(filepath).unlink(missing_ok=True)
+
+    @pytest.mark.parametrize(
+        ("csv_content", "message"),
+        [
+            ("0.0,0,0,0.0\nnan,0,0,0.1\n", "time channel"),
+            ("0.0,0,0,0.0\n0.01,0,0,inf\n", "phase channel"),
+        ],
+    )
+    def test_load_csv_nonfinite_values_raise_clear_error(self, csv_content, message):
+        """Test CSV time/phase NaN and Inf are rejected before detrending/fitting."""
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
+            f.write(csv_content)
+            filepath = f.name
+
+        try:
+            with pytest.raises(ValueError, match=message):
+                RingDownDataLoader.load_csv(filepath)
+        finally:
+            Path(filepath).unlink(missing_ok=True)
+
     def test_load_csv_file_size_limit_raises(self):
         """Test that file exceeding size limit raises ValueError."""
         csv_content = """% Comment
@@ -198,6 +236,56 @@ class TestRingDownDataLoader:
             t_out, data_out, V2_out = RingDownDataLoader.load_mat(filepath)
             assert V2_out is not None
             assert len(V2_out) == 100
+        finally:
+            Path(filepath).unlink(missing_ok=True)
+
+    @pytest.mark.parametrize(
+        "moku_data",
+        [
+            np.array([0.0, 0.1, 0.2]),
+            np.empty((0, 4)),
+            np.zeros((10, 3)),
+        ],
+    )
+    def test_load_mat_invalid_data_shape_raises_value_error(self, moku_data):
+        """Test malformed moku.data shapes fail with documented ValueError."""
+        moku = np.empty((1, 1), dtype=[("data", object)])
+        moku[0, 0]["data"] = moku_data
+        with tempfile.NamedTemporaryFile(suffix=".mat", delete=False) as f:
+            filepath = f.name
+
+        try:
+            savemat(filepath, {"moku": moku})
+            with pytest.raises(ValueError, match="moku.data must be a non-empty 2D array"):
+                RingDownDataLoader.load_mat(filepath)
+        finally:
+            Path(filepath).unlink(missing_ok=True)
+
+    @pytest.mark.parametrize(
+        ("column", "message"),
+        [
+            (0, "time channel"),
+            (3, "phase channel"),
+            (8, "V2 channel"),
+        ],
+    )
+    def test_load_mat_nonfinite_values_raise_clear_error(self, column, message):
+        """Test MAT time/phase/V2 NaN and Inf are rejected before detrending/fitting."""
+        n = 10
+        data = np.zeros((n, 9))
+        data[:, 0] = np.linspace(0, 0.1, n)
+        data[:, 3] = np.cos(2 * np.pi * data[:, 0])
+        data[:, 8] = data[:, 3] * 0.5
+        data[2, column] = np.nan if column != 8 else np.inf
+        moku = np.empty((1, 1), dtype=[("data", object)])
+        moku[0, 0]["data"] = data
+        with tempfile.NamedTemporaryFile(suffix=".mat", delete=False) as f:
+            filepath = f.name
+
+        try:
+            savemat(filepath, {"moku": moku})
+            with pytest.raises(ValueError, match=message):
+                RingDownDataLoader.load_mat(filepath)
         finally:
             Path(filepath).unlink(missing_ok=True)
 

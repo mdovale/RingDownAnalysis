@@ -326,4 +326,7 @@ class TestDFTFrequencyEstimator:
         result = estimator.estimate_full(x, fs)
         assert isinstance(result, EstimationResult)
         assert result.used_fallback is True
+        assert result.success is False
+        assert result.tau is None
+        assert result.Q is None
         assert result.message is not None

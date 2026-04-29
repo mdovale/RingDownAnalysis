@@ -31,7 +31,8 @@ Use `RingDownDataLoader.load()` to auto-detect format from file extension.
 ### Structure
 
 - **Comments**: Lines starting with `%` are skipped.
-- **Header**: No header row; first non-comment line is data.
+- **Header**: A leading plain-text header row such as `time,a,b,phase` is skipped.
+  After numeric data begins, malformed rows are treated as errors.
 - **Delimiter**: Comma (`,`).
 - **Encoding**: UTF-8 or ASCII.
 
@@ -52,8 +53,9 @@ Use `RingDownDataLoader.load()` to auto-detect format from file extension.
 ### Validation Rules
 
 - At least one valid data line (non-comment, 4+ columns, numeric first column).
-- First column must be parseable as float.
-- Raises `ValueError` if: empty file, comments only, fewer than 4 columns, or malformed numeric data.
+- Time and phase columns must be parseable as finite floats.
+- Raises `ValueError` if: empty file, comments/header only, fewer than 4 columns,
+  malformed numeric data, or non-finite time/phase values.
 
 ---
 
@@ -80,6 +82,8 @@ moku.data  →  2D array, shape (N, 4) or (N, 9+)
 
 **Minimum columns**: 4 (time + 2 unused + phase).  
 **Optional**: If `moku.data.shape[1] > 8`, column 8 is read as V2 (second channel phase).
+V2 is returned as pass-through metadata by `RingDownAnalyzer`; the current analysis
+pipeline estimates frequency/tau/Q from the primary phase channel only.
 
 ### Access Patterns
 
@@ -96,8 +100,10 @@ The loader supports both:
 ### Validation Rules
 
 - Variable `moku` must exist.
-- `moku.data` must be accessible and have at least 4 columns.
-- Raises `ValueError` if structure is invalid (e.g., missing `moku` or `data`).
+- `moku.data` must be accessible as a non-empty 2D array with at least 4 columns.
+- Time, phase, and optional V2 columns must contain only finite values.
+- Raises `ValueError` if structure is invalid (e.g., missing `moku` or `data`,
+  1D/empty/under-columned payloads, or non-finite loaded channels).
 
 ---
 
@@ -110,7 +116,9 @@ The loader supports both:
 | File exceeds size limit       | `ValueError` ("exceeds maximum")              |
 | Empty CSV / comments only     | `ValueError` ("No valid data")                |
 | CSV with &lt; 4 columns       | `ValueError`                                  |
+| CSV/MAT NaN or Inf in loaded channels | `ValueError` naming the channel      |
 | MAT missing `moku` or `data`  | `ValueError` ("Invalid MAT file structure")   |
+| MAT `moku.data` not non-empty 2D with 4+ columns | `ValueError`              |
 
 ### File Size Limit
 

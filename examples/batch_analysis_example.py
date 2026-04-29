@@ -48,7 +48,7 @@ def main():
 
         # Create summary table
         print("\nGenerating summary table...")
-        summary = batch_analyzer.get_summary_table()
+        summary = batch_analyzer.get_formatted_summary_table()
         df_summary = pd.DataFrame(summary["data"])
         print("\nSummary of Frequency Estimation Results:")
         print("=" * 120)
@@ -78,13 +78,13 @@ def main():
         print("\nPerforming CRLB comparison analysis...")
         crlb_analysis = batch_analyzer.crlb_comparison_analysis()
 
-        print("\nCRLB Statistics:")
-        print(f"  Mean CRLB std: {crlb_analysis['crlb_statistics']['mean']:.6e} Hz")
-        print(f"  Min CRLB std: {crlb_analysis['crlb_statistics']['min']:.6e} Hz")
-        print(f"  Max CRLB std: {crlb_analysis['crlb_statistics']['max']:.6e} Hz")
+        print("\nPlug-in Bound Statistics:")
+        print(f"  Mean plugin std: {crlb_analysis['crlb_statistics']['mean']:.6e} Hz")
+        print(f"  Min plugin std: {crlb_analysis['crlb_statistics']['min']:.6e} Hz")
+        print(f"  Max plugin std: {crlb_analysis['crlb_statistics']['max']:.6e} Hz")
 
         if len(crlb_analysis["valid_ratios"]) > 0:
-            print("\nRatio Statistics (|Δf| / CRLB):")
+            print("\nHeuristic Ratio Statistics (|Δf| / plugin bound):")
             print(f"  Mean ratio: {crlb_analysis['ratio_statistics']['mean']:.4f}")
             print(f"  Median ratio: {crlb_analysis['ratio_statistics']['median']:.4f}")
             print(f"  Max ratio: {crlb_analysis['ratio_statistics']['max']:.4f}")
@@ -92,7 +92,7 @@ def main():
 
         # Consistency table
         print("\nGenerating consistency table...")
-        consistency_table = batch_analyzer.get_consistency_table()
+        consistency_table = batch_analyzer.get_formatted_consistency_table()
         df_consistency = pd.DataFrame(consistency_table["data"])
         print("\nFrequency Estimates and Deviations from Mean:")
         print("=" * 120)

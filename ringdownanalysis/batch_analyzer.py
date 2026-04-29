@@ -3,7 +3,7 @@ Batch analysis and statistics for ring-down measurement data.
 
 This module provides functionality for analyzing multiple ring-down data files,
 computing summary statistics, Q factor analysis, consistency analysis, and
-comparison with CRLB bounds.
+comparison with plug-in uncertainty diagnostics.
 """
 
 import glob
@@ -76,11 +76,12 @@ class ProcessResult:
         return len(self.failed_files) > 0
 
 
-def _process_single_file(filepath: str) -> dict:
+def _process_single_file(filepath: str, analyzer: Optional[RingDownAnalyzer] = None) -> dict:
     """
     Helper function to process a single file in parallel.
 
-    Creates its own analyzer instance to avoid pickling issues.
+    Uses the configured analyzer when supplied so sequential and parallel runs
+    preserve estimator settings.
 
     Parameters:
     -----------
@@ -92,8 +93,18 @@ def _process_single_file(filepath: str) -> dict:
     Dict
         Result dictionary from analyzer.analyze_file
     """
-    analyzer = RingDownAnalyzer()
-    return analyzer.analyze_file(filepath)
+    active_analyzer = analyzer or RingDownAnalyzer()
+    return active_analyzer.analyze_file(filepath)
+
+
+def _format_optional_float(value, fmt: str) -> str:
+    """Format numeric display values while preserving missing estimates."""
+    if value is None:
+        return "—"
+    value = float(value)
+    if not np.isfinite(value):
+        return str(value)
+    return format(value, fmt)
 
 
 class BatchRingDownAnalyzer:
@@ -105,7 +116,7 @@ class BatchRingDownAnalyzer:
     - Summary statistics and tables
     - Q factor analysis
     - Consistency analysis across realizations
-    - CRLB comparison analysis
+    - Plug-in uncertainty comparison analysis
     """
 
     def __init__(
@@ -259,7 +270,7 @@ class BatchRingDownAnalyzer:
             with ProcessPoolExecutor(max_workers=n_jobs) as executor:
                 # Submit all tasks
                 future_to_filepath = {
-                    executor.submit(_process_single_file, filepath): filepath
+                    executor.submit(_process_single_file, filepath, self.analyzer): filepath
                     for filepath in filepaths
                 }
 
@@ -351,7 +362,7 @@ class BatchRingDownAnalyzer:
         pattern: str = "*",
         verbose: bool = True,
         n_jobs: Optional[int] = None,
-    ) -> list[dict]:
+    ) -> ProcessResult:
         """
         Process all data files in a directory.
 
@@ -445,13 +456,14 @@ class BatchRingDownAnalyzer:
 
     def get_summary_table(self) -> dict:
         """
-        Create a summary table with all analysis results.
+        Create a numeric summary table with all analysis results.
 
         Returns:
         --------
         Dict
             Dictionary with 'data' (list of dicts) and 'columns' (list of column names)
-            Suitable for creating pandas DataFrame
+            suitable for creating pandas DataFrame. Numeric fields are returned
+            as raw numbers; use get_formatted_summary_table() for display strings.
         """
         if not self.results:
             return {"data": [], "columns": []}
@@ -464,28 +476,80 @@ class BatchRingDownAnalyzer:
                     "Type": r["type"],
                     "N (samples)": r["N"],
                     "N_crop (samples)": r["N_crop"],
-                    "T (s)": f"{r['T']:.2f}",
-                    "T_crop (s)": f"{r['T_crop']:.2f}",
-                    "fs (Hz)": f"{r['fs']:.2f}",
-                    "tau_est (s)": f"{r['tau_est']:.2f}",
-                    "tau_nls (s)": f"{r['tau_nls']:.2f}" if r.get("tau_nls") is not None else "—",
-                    "f_NLS (Hz)": f"{r['f_nls']:.6f}",
-                    "f_DFT (Hz)": f"{r['f_dft']:.6f}",
-                    "|f_NLS - f_DFT| (Hz)": f"{abs(r['f_nls'] - r['f_dft']):.6e}",
-                    "Plugin bound std (Hz)": f"{_result_uncertainty_std(r):.6e}",
-                    "A0_est": f"{r['A0_est']:.4f}",
-                    "sigma_est": f"{r['sigma_est']:.6e}",
+                    "T (s)": r["T"],
+                    "T_crop (s)": r["T_crop"],
+                    "fs (Hz)": r["fs"],
+                    "tau_seed (s)": r.get("tau_seed"),
+                    "tau_seed_method": r.get("tau_seed_method"),
+                    "tau_est (s)": r["tau_est"],
+                    "tau_nls (s)": r.get("tau_nls"),
+                    "tau_dft (s)": r.get("tau_dft"),
+                    "tau_est_low_confidence": r.get("tau_est_low_confidence"),
+                    "tau_nls_at_lower_bound": r.get("tau_nls_at_lower_bound"),
+                    "tau_nls_at_upper_bound": r.get("tau_nls_at_upper_bound"),
+                    "tau_dft_at_lower_bound": r.get("tau_dft_at_lower_bound"),
+                    "tau_dft_at_upper_bound": r.get("tau_dft_at_upper_bound"),
+                    "f_NLS (Hz)": r["f_nls"],
+                    "f_DFT (Hz)": r["f_dft"],
+                    "|f_NLS - f_DFT| (Hz)": abs(r["f_nls"] - r["f_dft"]),
+                    "Q_pre_crop": r.get("Q_pre_crop"),
+                    "Q_NLS": r.get("Q_nls"),
+                    "Q_DFT": r.get("Q_dft"),
+                    "NLS success": r.get("nls_success"),
+                    "DFT success": r.get("dft_success"),
+                    "NLS used fallback": r.get("nls_used_fallback"),
+                    "DFT used fallback": r.get("dft_used_fallback"),
+                    "Plugin bound std (Hz)": _result_uncertainty_std(r),
+                    "uncertainty_valid": r.get("uncertainty_valid"),
+                    "A0_est": r["A0_est"],
+                    "sigma_est": r["sigma_est"],
                 }
             )
 
         # Add Q factor if calculated
         if "Q" in self.results[0]:
             for i, r in enumerate(self.results):
-                summary_data[i]["Q"] = f"{r['Q']:.2e}"
+                summary_data[i]["Q"] = r["Q"]
 
         columns = list(summary_data[0].keys()) if summary_data else []
 
         return {"data": summary_data, "columns": columns}
+
+    def get_formatted_summary_table(self) -> dict:
+        """
+        Create a display-oriented summary table with formatted string values.
+
+        The primary get_summary_table() API returns raw numeric values for
+        analysis. This helper preserves the older notebook-friendly display form.
+        """
+        table = self.get_summary_table()
+        formatted_data = []
+        for row in table["data"]:
+            formatted = dict(row)
+            for key in (
+                "T (s)",
+                "T_crop (s)",
+                "fs (Hz)",
+                "tau_seed (s)",
+                "tau_est (s)",
+                "tau_nls (s)",
+                "tau_dft (s)",
+            ):
+                if key in formatted:
+                    formatted[key] = _format_optional_float(formatted[key], ".2f")
+            for key in ("f_NLS (Hz)", "f_DFT (Hz)"):
+                if key in formatted:
+                    formatted[key] = _format_optional_float(formatted[key], ".6f")
+            for key in ("|f_NLS - f_DFT| (Hz)", "Plugin bound std (Hz)", "sigma_est"):
+                if key in formatted:
+                    formatted[key] = _format_optional_float(formatted[key], ".6e")
+            for key in ("Q_pre_crop", "Q_NLS", "Q_DFT", "Q"):
+                if key in formatted:
+                    formatted[key] = _format_optional_float(formatted[key], ".2e")
+            if "A0_est" in formatted:
+                formatted["A0_est"] = _format_optional_float(formatted["A0_est"], ".4f")
+            formatted_data.append(formatted)
+        return {"data": formatted_data, "columns": table["columns"]}
 
     def consistency_analysis(self) -> dict:
         """
@@ -600,22 +664,22 @@ class BatchRingDownAnalyzer:
 
     def crlb_comparison_analysis(self) -> dict:
         """
-        Compare frequency estimation differences with CRLB.
+        Compare frequency estimation differences with plug-in uncertainty diagnostics.
 
         Computes:
         - Frequency differences between NLS and DFT
-        - Ratio of differences to CRLB
-        - Statistics comparing differences to CRLB
+        - Heuristic ratio of differences to plug-in bound
+        - Statistics comparing differences to the plug-in bound
 
         Returns:
         --------
         Dict
             Dictionary with analysis results including:
             - 'frequency_diffs': array of abs(f_NLS - f_DFT)
-            - 'crlb_stds': array of plug-in CRLB standard deviations
+        - 'plugin_crlb_stds': array of plug-in CRLB standard deviations
             - 'ratios': array of abs(f_NLS - f_DFT) / plugin_bound_std
             - 'crlb_statistics': dict with mean, min, max plug-in bound
-            - 'ratio_statistics': dict with mean, median, min, max ratios
+        - 'ratio_statistics': heuristic dict with mean, median, min, max ratios
         """
         if not self.results:
             return {}
@@ -628,7 +692,7 @@ class BatchRingDownAnalyzer:
         # Compute differences vectorized
         diffs = np.abs(f_nls_all - f_dft_all)
 
-        # Compute ratios (difference / CRLB) vectorized
+        # Compute heuristic ratios (difference / plug-in bound) vectorized
         # Use np.divide with where to handle division by zero and inf
         ratios = np.divide(
             diffs,
@@ -672,6 +736,7 @@ class BatchRingDownAnalyzer:
         return {
             "frequency_diffs": np.array(diffs),
             "crlb_stds": np.array(crlb_stds),
+            "plugin_crlb_stds": np.array(crlb_stds),
             "ratios": ratios,
             "valid_ratios": valid_ratios,
             "crlb_statistics": crlb_stats,
@@ -713,13 +778,14 @@ class BatchRingDownAnalyzer:
 
     def get_consistency_table(self) -> dict:
         """
-        Create a table showing frequency estimates and deviations from mean.
+        Create a numeric table showing frequency estimates and deviations from mean.
 
         Returns:
         --------
         Dict
             Dictionary with 'data' (list of dicts) and 'columns' (list of column names)
-            Suitable for creating pandas DataFrame
+            Suitable for creating pandas DataFrame. Numeric fields are returned
+            as raw numbers; use get_formatted_consistency_table() for display strings.
         """
         if not self.results:
             return {"data": [], "columns": []}
@@ -734,14 +800,34 @@ class BatchRingDownAnalyzer:
                 {
                     "Index": i,
                     "Filename": Path(r["filename"]).name[:40],
-                    "f_NLS (Hz)": f"{r['f_nls']:.9f}",
-                    "f_DFT (Hz)": f"{r['f_dft']:.9f}",
-                    "Deviation from NLS mean (Hz)": f"{(r['f_nls'] - nls_mean):.6e}",
-                    "Deviation from DFT mean (Hz)": f"{(r['f_dft'] - dft_mean):.6e}",
-                    "Plugin bound std (Hz)": f"{_result_uncertainty_std(r):.6e}",
+                    "f_NLS (Hz)": r["f_nls"],
+                    "f_DFT (Hz)": r["f_dft"],
+                    "Deviation from NLS mean (Hz)": r["f_nls"] - nls_mean,
+                    "Deviation from DFT mean (Hz)": r["f_dft"] - dft_mean,
+                    "Plugin bound std (Hz)": _result_uncertainty_std(r),
+                    "NLS success": r.get("nls_success"),
+                    "DFT success": r.get("dft_success"),
+                    "DFT used fallback": r.get("dft_used_fallback"),
                 }
             )
 
         columns = list(consistency_data[0].keys()) if consistency_data else []
 
         return {"data": consistency_data, "columns": columns}
+
+    def get_formatted_consistency_table(self) -> dict:
+        """Create a display-oriented consistency table with formatted strings."""
+        table = self.get_consistency_table()
+        formatted_data = []
+        for row in table["data"]:
+            formatted = dict(row)
+            for key in ("f_NLS (Hz)", "f_DFT (Hz)"):
+                formatted[key] = _format_optional_float(formatted[key], ".9f")
+            for key in (
+                "Deviation from NLS mean (Hz)",
+                "Deviation from DFT mean (Hz)",
+                "Plugin bound std (Hz)",
+            ):
+                formatted[key] = _format_optional_float(formatted[key], ".6e")
+            formatted_data.append(formatted)
+        return {"data": formatted_data, "columns": table["columns"]}

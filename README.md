@@ -79,6 +79,9 @@ results = batch_analyzer.process_directory("data", verbose=True)
 summary = batch_analyzer.get_summary_table()
 df_summary = pd.DataFrame(summary['data'])
 print(df_summary)
+
+# For notebook/console display strings:
+df_display = pd.DataFrame(batch_analyzer.get_formatted_summary_table()['data'])
 ```
 
 See `examples/usage_example.py` and `examples/batch_analysis_example.py` for more complete examples.
@@ -116,7 +119,7 @@ The project compares two complementary approaches for frequency estimation:
 1. **Nonlinear Least Squares (NLS)** with explicit ring-down model
 2. **Frequency-Domain Methods (DFT)** with Lorentzian peak fitting
 
-Both methods are evaluated against the Cramér-Rao Lower Bound (CRLB) derived from the explicit Fisher information matrix for ring-down signals.
+Both methods are evaluated against Cramér-Rao-style bounds derived from the explicit Fisher information matrix for ring-down signals. Real-data analyzer outputs such as `plugin_crlb_std_f`, `uncertainty_std_f`, and the backward-compatible `crlb_std_f` alias are plug-in diagnostics computed from the fitted model, residual noise, and selected crop. Treat batch ratios involving those values as heuristic consistency diagnostics rather than formal hypothesis tests.
 
 ## Features
 
@@ -217,6 +220,8 @@ q_stats = batch_analyzer.get_q_factor_statistics()
 # Get summary table
 summary = batch_analyzer.get_summary_table()
 df_summary = pd.DataFrame(summary['data'])
+# Use get_formatted_summary_table() or get_formatted_consistency_table()
+# when you want preformatted display strings instead of numeric columns.
 
 # Consistency analysis
 consistency = batch_analyzer.consistency_analysis()
@@ -286,8 +291,8 @@ See `benchmarks/README.md` for detailed information on performance benchmarking 
 
 Experimental data files should be placed in the `data/` directory:
 
-- **CSV files**: Moku:Lab Phasemeter format with time in column 1 and phase (cycles) in column 4
-- **MAT files**: MATLAB format with `moku.data` structure containing time in column 1 and phase in column 4
+- **CSV files**: Moku:Lab Phasemeter format with time in column 1 and phase (cycles) in column 4. `%` comments and leading plain-text headers are skipped.
+- **MAT files**: MATLAB format with `moku.data` as a non-empty 2D array containing time in column 1 and phase in column 4
 
 See `docs/data_format.md` for the full specification (column indices, units, validation rules, edge cases).
 

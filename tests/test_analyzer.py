@@ -158,6 +158,13 @@ class TestRingDownAnalyzer:
             assert r["N_crop"] > 0
             assert r["tau_est"] > 0
 
+    @pytest.mark.parametrize("max_tau_multiplier", [0.0, -1.0, np.nan])
+    def test_analyze_file_invalid_max_tau_multiplier_raises(self, tmp_csv_file, max_tau_multiplier):
+        """Test invalid crop multipliers fail instead of being silently ignored."""
+        analyzer = RingDownAnalyzer()
+        with pytest.raises(ValueError, match="max_tau_multiplier must be positive and finite"):
+            analyzer.analyze_file(tmp_csv_file, max_tau_multiplier=max_tau_multiplier)
+
     def test_analyze_array_numpy_t_data(self, sample_ringdown_signal):
         """Test analyze_array with numpy t and data arrays."""
         t, data, fs = sample_ringdown_signal
@@ -253,8 +260,24 @@ class TestRingDownAnalyzer:
         assert result["tau_model"] > 0
         assert result["plugin_crlb_std_f"] == result["uncertainty_std_f"]
         assert result["crlb_std_f"] == result["uncertainty_std_f"]
-        assert result["uncertainty_method"].startswith("plugin_crlb")
+        assert result["uncertainty_method"].startswith("plugin_crlb_fitted_tau")
+        assert result["crlb_std_f_is_alias"] is True
         assert result["noise_dof"] > 0
+
+    def test_analyze_array_reports_tau_diagnostics(self, sample_ringdown_signal):
+        """Test analyzer surfaces tau provenance, bounds, and bound-hit flags."""
+        t, data, _ = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        result = analyzer.analyze_array(t=t, data=data)
+        assert result["tau_seed"] > 0
+        assert isinstance(result["tau_seed_method"], str)
+        assert result["tau_full_lower"] < result["tau_full_upper"]
+        assert result["tau_cropped_lower"] < result["tau_cropped_upper"]
+        assert result["tau_cropped_seed_source"] == "full_record_tau_est"
+        assert "tau_est_low_confidence" in result
+        assert "tau_nls_at_lower_bound" in result
+        assert "tau_dft_at_upper_bound" in result
+        assert np.isfinite(result["Q_pre_crop"])
 
 
 class TestAnalyzerEdgeCases:

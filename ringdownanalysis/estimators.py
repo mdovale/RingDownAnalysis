@@ -71,6 +71,13 @@ class EstimationResult(NamedTuple):
     """Number of function evaluations used by the fit, if available"""
 
 
+class TauInitialization(NamedTuple):
+    """Tau initializer with provenance for diagnostics."""
+
+    tau: float
+    method: str
+
+
 class FrequencyEstimator(ABC):
     """Base class for frequency estimators."""
 
@@ -332,17 +339,23 @@ def _estimate_initial_parameters_from_dft(x: np.ndarray, fs: float) -> tuple:
     return _sanitize_initial_parameters(x, fs, (f0_init, phi0_init, A0_init, c0))
 
 
-def _estimate_initial_tau_from_envelope(x: np.ndarray, t: np.ndarray) -> float:
+def _estimate_initial_tau_with_method(x: np.ndarray, t: np.ndarray) -> TauInitialization:
     """Estimate initial tau from signal envelope decay using RMS in windows."""
     N = len(x)
     if N < 10:
-        return max(float(t[-1]) / 2.0, float(t[1]))
+        return TauInitialization(
+            max(float(t[-1]) / 2.0, float(t[1])),
+            "record_half_duration_fallback_short_record",
+        )
 
     window_size = max(1, min(1000, N // 10))
     n_windows = N // window_size
 
     if n_windows == 0:
-        return max(float(t[-1]) / 2.0, float(t[1]))
+        return TauInitialization(
+            max(float(t[-1]) / 2.0, float(t[1])),
+            "record_half_duration_fallback_short_record",
+        )
 
     # Vectorized RMS calculation using reshape and std along axis
     # Pad or truncate to make evenly divisible
@@ -361,9 +374,20 @@ def _estimate_initial_tau_from_envelope(x: np.ndarray, t: np.ndarray) -> float:
     decay_idx = np.where(rms_values < rms_peak * np.exp(-1))[0]
 
     if len(decay_idx) > 0 and decay_idx[0] > 0:
-        return max(float(t[decay_idx[0] * window_size]), float(t[1]))
+        return TauInitialization(
+            max(float(t[decay_idx[0] * window_size]), float(t[1])),
+            "rms_envelope_1e_crossing",
+        )
     else:
-        return max(float(t[-1]) / 2.0, float(t[1]))
+        return TauInitialization(
+            max(float(t[-1]) / 2.0, float(t[1])),
+            "record_half_duration_fallback_no_1e_crossing",
+        )
+
+
+def _estimate_initial_tau_from_envelope(x: np.ndarray, t: np.ndarray) -> float:
+    """Estimate initial tau from signal envelope decay using RMS in windows."""
+    return _estimate_initial_tau_with_method(x, t).tau
 
 
 class NLSFrequencyEstimator(FrequencyEstimator):
@@ -728,7 +752,7 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         window : str
             Window type: 'rect' (default), 'hann', 'kaiser', or 'blackman'
         use_zeropad : bool
-            Use zero-padding for finer frequency grid (default: False)
+            Use zero-padding for finer frequency grid (default: True)
         pad_factor : int
             Zero-padding factor: DFT size = pad_factor * N (default: 4)
         lorentzian_points : int
@@ -901,6 +925,16 @@ class DFTFrequencyEstimator(FrequencyEstimator):
         # Step 1: Estimate frequency via DFT
         frequency_result = self._estimate_frequency_result(x, fs)
         f_hat = frequency_result.f
+        if not frequency_result.success:
+            return EstimationResult(
+                f=float(f_hat),
+                tau=None,
+                Q=None,
+                success=False,
+                used_fallback=frequency_result.used_fallback,
+                message=frequency_result.message,
+                nfev=frequency_result.nfev,
+            )
 
         # Step 2: Estimate tau via NLS with fixed frequency
         N = len(x)

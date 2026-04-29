@@ -10,6 +10,7 @@ import pytest
 
 from ringdownanalysis.analyzer import RingDownAnalyzer
 from ringdownanalysis.batch_analyzer import BatchRingDownAnalyzer, ProcessResult
+from ringdownanalysis.estimators import NLSFrequencyEstimator
 
 # Path to committed fixture files (relative to project root)
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -106,6 +107,12 @@ class TestBatchRingDownAnalyzer:
         assert len(summary["columns"]) > 0
         assert summary["data"][0]["Filename"] == "test1.csv"
         assert summary["data"][1]["Filename"] == "test2.mat"
+        assert isinstance(summary["data"][0]["T (s)"], float)
+        assert isinstance(summary["data"][0]["f_NLS (Hz)"], float)
+
+        formatted = batch_analyzer.get_formatted_summary_table()
+        assert isinstance(formatted["data"][0]["T (s)"], str)
+        assert isinstance(formatted["data"][0]["f_NLS (Hz)"], str)
 
     def test_get_summary_table_with_q(self):
         """Test summary table with Q factors."""
@@ -282,6 +289,10 @@ class TestBatchRingDownAnalyzer:
         assert "Filename" in table["columns"]
         assert "f_NLS (Hz)" in table["columns"]
         assert "f_DFT (Hz)" in table["columns"]
+        assert isinstance(table["data"][0]["f_NLS (Hz)"], float)
+
+        formatted = batch_analyzer.get_formatted_consistency_table()
+        assert isinstance(formatted["data"][0]["f_NLS (Hz)"], str)
 
     def test_get_consistency_table_empty(self):
         """Test consistency table with empty results."""
@@ -438,6 +449,17 @@ class TestProcessFilesWithRealFiles:
         assert len(result) == 2  # Two successful
         assert len(result.failed_files) == 1
         assert result.has_failures()
+
+    def test_parallel_process_files_preserves_custom_analyzer(self, tmp_csv_file):
+        """Test parallel workers use the injected analyzer configuration."""
+        analyzer = RingDownAnalyzer(nls_estimator=NLSFrequencyEstimator(tau_known=0.3))
+        batch_analyzer = BatchRingDownAnalyzer(analyzer=analyzer)
+
+        result = batch_analyzer.process_files([tmp_csv_file], verbose=False, n_jobs=2)
+
+        assert len(result) == 1
+        assert len(result.failed_files) == 0
+        assert result[0]["tau_nls"] == pytest.approx(0.3)
 
     def test_process_directory_with_pattern(self, tmp_path, tmp_csv_file):
         """Test process_directory pattern matching."""
