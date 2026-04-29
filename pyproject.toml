@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ringdownanalysis"
-version = "1.0.2"
-description = "Frequency estimation of ring-down signals using NLS and DFT methods"
+version = "1.0.3"
+description = "Frequency and quality factor estimation of exponentially decaying sinusoids"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
