@@ -84,7 +84,7 @@ def plot_frequency_crlb_vs_tau_ratio(params=None, ax=None, figsize=None, dpi=Non
 
     # Calculate CRLB for each T/tau
     crlb_f = np.zeros_like(tau_ratios)
-    for i, (N, T) in enumerate(zip(N_values, T_values)):
+    for i, (N, T) in enumerate(zip(N_values, T_values, strict=False)):
         try:
             crlb_f[i] = CRLBCalculator.standard_deviation(A0, sigma, fs, N, tau)
         except (ValueError, OverflowError):
@@ -296,7 +296,7 @@ def plot_q_crlb_vs_q(params=None, ax=None, figsize=None, dpi=None, *args, **kwar
 
     # Calculate CRLB for each Q
     crlb_q = np.zeros_like(Q_values)
-    for i, (Q, tau) in enumerate(zip(Q_values, tau_values)):
+    for i, (Q, tau) in enumerate(zip(Q_values, tau_values, strict=False)):
         try:
             crlb_q[i] = CRLBCalculator.q_standard_deviation(A0, sigma, fs, N, tau, f0)
         except (ValueError, OverflowError):

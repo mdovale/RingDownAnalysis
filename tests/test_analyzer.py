@@ -25,7 +25,7 @@ def _make_moku_mat(t: np.ndarray, phase: np.ndarray) -> dict:
 def _make_csv_content(t: np.ndarray, phase: np.ndarray) -> str:
     """Create Moku:Lab Phasemeter CSV format."""
     lines = ["% Comment\n"]
-    for ti, pi in zip(t, phase):
+    for ti, pi in zip(t, phase, strict=False):
         lines.append(f"{ti:.6f},0,0,{pi:.6f}\n")
     return "".join(lines)
 

@@ -2,8 +2,6 @@
 Compatibility layer for legacy function-based API.
 """
 
-from typing import Optional
-
 import numpy as np
 
 from .crlb import CRLBCalculator
@@ -37,7 +35,7 @@ def generate_ringdown(
     A0: float = 1.0,
     snr_db: float = 60.0,
     Q: float = 10000.0,
-    rng: Optional[np.random.Generator] = None,
+    rng: np.random.Generator | None = None,
 ):
     """
     Generate a noisy ring-down signal (exponentially decaying sinusoid).
@@ -50,9 +48,7 @@ def generate_ringdown(
 
 
 # Frequency estimation
-def estimate_freq_nls_ringdown(
-    x: np.ndarray, fs: float, tau_known: Optional[float] = None
-) -> float:
+def estimate_freq_nls_ringdown(x: np.ndarray, fs: float, tau_known: float | None = None) -> float:
     """
     Estimate frequency using nonlinear least squares with ring-down model.
 
@@ -117,7 +113,7 @@ def monte_carlo_analysis(
     Q: float = 10000.0,
     n_mc: int = 100,
     seed: int = 42,
-    n_workers: Optional[int] = None,
+    n_workers: int | None = None,
     timeout_per_trial: float = 30.0,
 ):
     """

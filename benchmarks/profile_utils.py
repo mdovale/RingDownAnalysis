@@ -7,8 +7,8 @@ Provides functions for profiling critical code paths and analyzing bottlenecks.
 import cProfile
 import io
 import pstats
+from collections.abc import Callable
 from contextlib import redirect_stdout
-from typing import Callable, Optional
 
 import numpy as np
 
@@ -27,7 +27,7 @@ class Profiler:
 
     def __init__(self):
         self.profiler = cProfile.Profile()
-        self.stats: Optional[pstats.Stats] = None
+        self.stats: pstats.Stats | None = None
 
     def profile(self, func: Callable, *args, **kwargs):
         """Profile a function call."""
@@ -186,9 +186,9 @@ class Profiler:
 
 
 def profile_single_file_analysis(
-    filepath: Optional[str] = None,
+    filepath: str | None = None,
     N: int = 100_000,
-    save_to: Optional[str] = None,
+    save_to: str | None = None,
 ) -> Profiler:
     """
     Profile single file analysis workflow.
@@ -218,7 +218,7 @@ def profile_single_file_analysis(
         t, x, _ = signal.generate(rng=rng)
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            for ti, xi in zip(t[:: max(1, N // 10000)], x[:: max(1, N // 10000)]):
+            for ti, xi in zip(t[:: max(1, N // 10000)], x[:: max(1, N // 10000)], strict=False):
                 f.write(f"{ti:.6f},0,0,{xi:.6f}\n")
             filepath = f.name
 
@@ -247,7 +247,7 @@ def profile_single_file_analysis(
 def profile_frequency_estimation(
     N: int = 1_000_000,
     method: str = "both",
-    save_to: Optional[str] = None,
+    save_to: str | None = None,
 ) -> Profiler:
     """
     Profile frequency estimation methods.
@@ -290,7 +290,7 @@ def profile_frequency_estimation(
 def profile_batch_analysis(
     n_files: int = 20,
     N_per_file: int = 100_000,
-    save_to: Optional[str] = None,
+    save_to: str | None = None,
 ) -> Profiler:
     """
     Profile batch analysis workflow.
@@ -326,7 +326,9 @@ def profile_batch_analysis(
             filepath = os.path.join(temp_dir, f"test_{i}.csv")
             with open(filepath, "w") as f:
                 for ti, xi in zip(
-                    t[:: max(1, N_per_file // 10000)], x[:: max(1, N_per_file // 10000)]
+                    t[:: max(1, N_per_file // 10000)],
+                    x[:: max(1, N_per_file // 10000)],
+                    strict=False,
                 ):
                     f.write(f"{ti:.6f},0,0,{xi:.6f}\n")
             filepaths.append(filepath)
@@ -350,7 +352,7 @@ def profile_batch_analysis(
 def profile_monte_carlo(
     n_mc: int = 50,
     N: int = 1_000_000,
-    save_to: Optional[str] = None,
+    save_to: str | None = None,
 ) -> Profiler:
     """
     Profile Monte Carlo analysis.

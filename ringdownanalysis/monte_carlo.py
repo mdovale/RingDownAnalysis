@@ -3,7 +3,6 @@ Monte Carlo analysis for comparing frequency estimation methods.
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 
@@ -32,6 +31,9 @@ except ImportError:
 from .crlb import CRLBCalculator
 from .estimators import DFTFrequencyEstimator, FrequencyEstimator, NLSFrequencyEstimator
 from .signal import RingDownSignal
+
+ErrorValue = float | None
+TrialErrors = dict[str, ErrorValue]
 
 
 def _estimate_freq_and_tau_nls(x: np.ndarray, fs: float):
@@ -196,6 +198,16 @@ def _process_single_trial(args):
     return (trial_idx, errors["nls"], errors["dft"], error_q_nls, error_q_dft, results)
 
 
+def _collect_valid_errors(errors_dict: dict[int, TrialErrors], key: str, n_mc: int) -> np.ndarray:
+    values: list[float] = []
+    for i in range(n_mc):
+        value = errors_dict[i][key]
+        if value is not None:
+            values.append(value)
+
+    return np.array(values, dtype=float)
+
+
 class MonteCarloAnalyzer:
     """
     Performs Monte Carlo analysis comparing frequency estimation methods.
@@ -203,8 +215,8 @@ class MonteCarloAnalyzer:
 
     def __init__(
         self,
-        nls_estimator: Optional[FrequencyEstimator] = None,
-        dft_estimator: Optional[FrequencyEstimator] = None,
+        nls_estimator: FrequencyEstimator | None = None,
+        dft_estimator: FrequencyEstimator | None = None,
     ):
         """
         Initialize Monte Carlo analyzer.
@@ -232,7 +244,7 @@ class MonteCarloAnalyzer:
         Q: float = 10000.0,
         n_mc: int = 100,
         seed: int = 42,
-        n_workers: Optional[int] = None,
+        n_workers: int | None = None,
         timeout_per_trial: float = 30.0,
     ) -> dict:
         """
@@ -343,7 +355,7 @@ class MonteCarloAnalyzer:
         ]
 
         # Storage for errors
-        errors_dict = {
+        errors_dict: dict[int, TrialErrors] = {
             i: {"nls": None, "dft": None, "q_nls": None, "q_dft": None} for i in range(n_mc)
         }
         failure_counts = {"nls": 0, "dft": 0, "q_nls": 0, "q_dft": 0}
@@ -467,23 +479,10 @@ class MonteCarloAnalyzer:
                     print(f"  Completed {trial_idx + 1}/{n_mc} trials...")
 
         # Extract errors
-        errors_nls = [
-            errors_dict[i]["nls"] for i in range(n_mc) if errors_dict[i]["nls"] is not None
-        ]
-        errors_dft = [
-            errors_dict[i]["dft"] for i in range(n_mc) if errors_dict[i]["dft"] is not None
-        ]
-        errors_q_nls = [
-            errors_dict[i]["q_nls"] for i in range(n_mc) if errors_dict[i]["q_nls"] is not None
-        ]
-        errors_q_dft = [
-            errors_dict[i]["q_dft"] for i in range(n_mc) if errors_dict[i]["q_dft"] is not None
-        ]
-
-        errors_nls = np.array(errors_nls)
-        errors_dft = np.array(errors_dft)
-        errors_q_nls = np.array(errors_q_nls)
-        errors_q_dft = np.array(errors_q_dft)
+        errors_nls = _collect_valid_errors(errors_dict, "nls", n_mc)
+        errors_dft = _collect_valid_errors(errors_dict, "dft", n_mc)
+        errors_q_nls = _collect_valid_errors(errors_dict, "q_nls", n_mc)
+        errors_q_dft = _collect_valid_errors(errors_dict, "q_dft", n_mc)
 
         # Report failures
         if any(failure_counts.values()):

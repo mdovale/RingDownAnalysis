@@ -10,7 +10,6 @@ File input assumptions:
 import logging
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -111,7 +110,7 @@ class RingDownDataLoader:
     @staticmethod
     def load_csv(
         filepath: str,
-        max_file_size_bytes: Optional[int] = None,
+        max_file_size_bytes: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Load CSV data file from Moku:Lab Phasemeter.
@@ -206,8 +205,8 @@ class RingDownDataLoader:
     @staticmethod
     def load_mat(
         filepath: str,
-        max_file_size_bytes: Optional[int] = None,
-    ) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+        max_file_size_bytes: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         """
         Load MAT data file from Moku:Lab Phasemeter.
 
@@ -315,8 +314,8 @@ class RingDownDataLoader:
     @staticmethod
     def load(
         filepath: str,
-        max_file_size_bytes: Optional[int] = DEFAULT_MAX_FILE_SIZE_BYTES,
-    ) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray], str]:
+        max_file_size_bytes: int | None = DEFAULT_MAX_FILE_SIZE_BYTES,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, str]:
         """
         Load data file (CSV or MAT) automatically detecting format.
 

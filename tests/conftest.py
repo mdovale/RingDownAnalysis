@@ -2,8 +2,6 @@
 Pytest fixtures for ring-down analysis tests.
 """
 
-from typing import Optional
-
 import numpy as np
 import pytest
 from scipy.io import savemat
@@ -12,12 +10,12 @@ from scipy.io import savemat
 def _make_csv_content(t: np.ndarray, phase: np.ndarray) -> str:
     """Create Moku:Lab Phasemeter CSV format: time,col1,col2,phase."""
     lines = ["% Comment line\n"]
-    for ti, pi in zip(t, phase):
+    for ti, pi in zip(t, phase, strict=False):
         lines.append(f"{ti:.6f},0,0,{pi:.6f}\n")
     return "".join(lines)
 
 
-def _make_moku_mat(t: np.ndarray, phase: np.ndarray, v2: Optional[np.ndarray] = None) -> dict:
+def _make_moku_mat(t: np.ndarray, phase: np.ndarray, v2: np.ndarray | None = None) -> dict:
     """Create moku.data structure for MAT file. Columns: time, 0, 0, phase, ..., V2."""
     n = len(t)
     cols = [

@@ -322,7 +322,7 @@ class TestFullAnalysisPipeline:
         import tempfile
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            for ti, xi in zip(t, x):
+            for ti, xi in zip(t, x, strict=False):
                 f.write(f"{ti:.6f},0,0,{xi:.6f}\n")
             temp_path = f.name
 
@@ -349,7 +349,7 @@ class TestFullAnalysisPipeline:
         import tempfile
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            for ti, xi in zip(t[::10], x[::10]):  # Subsample to avoid huge files
+            for ti, xi in zip(t[::10], x[::10], strict=False):  # Subsample to avoid huge files
                 f.write(f"{ti:.6f},0,0,{xi:.6f}\n")
             temp_path = f.name
 
