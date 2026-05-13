@@ -96,6 +96,7 @@ docs/api/_build/
 # IDEs
 .vscode/
 .cursor/
+docs/handoffs/
 .idea/
 *.swp
 *.swo
