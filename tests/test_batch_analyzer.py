@@ -61,6 +61,55 @@ class TestBatchRingDownAnalyzer:
 
         assert len(q_factors) == 0
 
+    def test_calculate_q_factors_skips_invalid_q_by_default(self):
+        """Test Q factor calculation excludes invalid analyzer Q estimates by default."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_nls": 123.0,
+                "Q_nls_raw": 123.0,
+                "Q_nls_valid": True,
+                "Q_nls_status": "valid",
+            },
+            {
+                "f_nls": 5.0,
+                "tau_est": 200.0,
+                "Q_nls": None,
+                "Q_nls_raw": 999.0,
+                "Q_nls_valid": False,
+                "Q_nls_status": "invalid",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == [123.0]
+        assert batch_analyzer.results[0]["Q"] == 123.0
+        assert batch_analyzer.results[1]["Q"] is None
+        assert batch_analyzer.results[1]["Q_valid"] is False
+
+    def test_calculate_q_factors_can_include_invalid_raw_q(self):
+        """Test raw invalid Q can still be requested for diagnostics."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 200.0,
+                "Q_nls": None,
+                "Q_nls_raw": 999.0,
+                "Q_nls_valid": False,
+                "Q_nls_status": "invalid",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors(include_invalid=True)
+
+        assert q_factors == [999.0]
+        assert batch_analyzer.results[0]["Q"] == 999.0
+        assert batch_analyzer.results[0]["Q_valid"] is False
+
     def test_get_summary_table(self):
         """Test summary table generation."""
         batch_analyzer = BatchRingDownAnalyzer()
@@ -251,6 +300,9 @@ class TestBatchRingDownAnalyzer:
         assert "max" in stats
         assert "range" in stats
         assert stats["min"] <= stats["mean"] <= stats["max"]
+        assert stats["n_total"] == 3
+        assert stats["n_valid"] == 3
+        assert stats["n_skipped"] == 0
 
     def test_get_q_factor_statistics_empty(self):
         """Test Q factor statistics with empty results."""
@@ -260,6 +312,36 @@ class TestBatchRingDownAnalyzer:
         stats = batch_analyzer.get_q_factor_statistics()
 
         assert stats == {}
+
+    def test_get_q_factor_statistics_reports_skipped_invalid_q(self):
+        """Test Q statistics report invalid/skipped counts."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_nls": 123.0,
+                "Q_nls_raw": 123.0,
+                "Q_nls_valid": True,
+                "Q_nls_status": "valid",
+            },
+            {
+                "f_nls": 5.0,
+                "tau_est": 200.0,
+                "Q_nls": None,
+                "Q_nls_raw": 999.0,
+                "Q_nls_valid": False,
+                "Q_nls_status": "invalid",
+            },
+        ]
+
+        stats = batch_analyzer.get_q_factor_statistics()
+
+        assert stats["values"].tolist() == [123.0]
+        assert stats["n_total"] == 2
+        assert stats["n_valid"] == 1
+        assert stats["n_skipped"] == 1
+        assert stats["n_invalid"] == 1
 
     def test_get_consistency_table(self):
         """Test consistency table generation."""

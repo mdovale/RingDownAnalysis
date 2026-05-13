@@ -86,6 +86,29 @@ df_display = pd.DataFrame(batch_analyzer.get_formatted_summary_table()['data'])
 
 See `examples/usage_example.py` and `examples/batch_analysis_example.py` for more complete examples.
 
+#### Q Validity and Raw Diagnostics
+
+Real ring-down records may not identify the decay time constant well enough for
+a trustworthy Q estimate. `RingDownAnalyzer` therefore separates raw optimizer
+outputs from user-facing Q values:
+
+- `Q_nls_raw` and `Q_dft_raw` preserve the direct fitted products.
+- `Q_nls` and `Q_dft` are only populated when the corresponding estimate is
+  cleanly valid.
+- `Q_nls_valid`, `Q_dft_valid`, `Q_nls_status`, `Q_dft_status`, and the
+  `Q_*_reasons` lists explain invalid or warning-status estimates.
+
+Batch Q statistics exclude invalid or warning-status Q values by default. Pass
+`include_invalid=True` to `calculate_q_factors()` or
+`get_q_factor_statistics()` only for diagnostic work where raw fitted values are
+explicitly desired.
+
+For array workflows, pass `detrend="constant"` to `analyze_array()` when you
+want the same constant-offset removal used by file loading. To inspect
+window/crop sensitivity, use `RingDownAnalyzer.q_sensitivity(...)`; it returns
+DataFrame-ready records with valid Q, raw Q, status, reasons, tau bound flags,
+and crop metadata for each requested start/duration/multiplier combination.
+
 #### Configure Logging
 
 The package uses `NullHandler` by default (no log output). For easier debugging, enable console logging:
@@ -212,9 +235,9 @@ batch_analyzer = BatchRingDownAnalyzer()
 # Process all files in data directory
 results = batch_analyzer.process_directory("data", verbose=True, n_jobs=-1)
 
-# Q factors are automatically calculated during analysis (via estimate_full())
-# Access them directly from results or use calculate_q_factors() for statistics
-batch_analyzer.calculate_q_factors()  # Ensures Q is in results dict
+# Valid Q factors are available from results or calculate_q_factors().
+# Invalid/warning raw values stay in Q_nls_raw and Q_dft_raw for diagnostics.
+batch_analyzer.calculate_q_factors()  # Ensures valid Q is in results dict
 q_stats = batch_analyzer.get_q_factor_statistics()
 
 # Get summary table

@@ -6,13 +6,14 @@ computing summary statistics, Q factor analysis, consistency analysis, and
 comparison with plug-in uncertainty diagnostics.
 """
 
+from __future__ import annotations
+
 import glob
 import logging
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -76,7 +77,7 @@ class ProcessResult:
         return len(self.failed_files) > 0
 
 
-def _process_single_file(filepath: str, analyzer: Optional[RingDownAnalyzer] = None) -> dict:
+def _process_single_file(filepath: str, analyzer: RingDownAnalyzer | None = None) -> dict:
     """
     Helper function to process a single file in parallel.
 
@@ -107,6 +108,30 @@ def _format_optional_float(value, fmt: str) -> str:
     return format(value, fmt)
 
 
+def _result_q_value(
+    result: dict, *, include_invalid: bool = False
+) -> tuple[float | None, bool, str]:
+    """Return the preferred Q value plus validity metadata for a result."""
+    has_validity = "Q_nls_valid" in result
+    q_valid = bool(result.get("Q_nls_valid", True))
+    q_status = str(result.get("Q_nls_status", "valid" if q_valid else "invalid"))
+
+    if has_validity and not q_valid and not include_invalid:
+        return None, False, q_status
+
+    q = result.get("Q_nls")
+    if q is None and include_invalid:
+        q = result.get("Q_nls_raw")
+    if q is None and not has_validity:
+        tau_for_q = result.get("tau_nls") or result.get("tau_model") or result["tau_est"]
+        q = np.pi * result["f_nls"] * tau_for_q
+
+    if q is None or not np.isfinite(q):
+        return None, False, q_status
+
+    return float(q), q_valid, q_status
+
+
 class BatchRingDownAnalyzer:
     """
     Batch analysis for multiple ring-down measurement files.
@@ -121,7 +146,7 @@ class BatchRingDownAnalyzer:
 
     def __init__(
         self,
-        analyzer: Optional[RingDownAnalyzer] = None,
+        analyzer: RingDownAnalyzer | None = None,
     ):
         """
         Initialize batch analyzer.
@@ -138,7 +163,7 @@ class BatchRingDownAnalyzer:
         self,
         filepaths: list[str],
         verbose: bool = True,
-        n_jobs: Optional[int] = None,
+        n_jobs: int | None = None,
     ) -> ProcessResult:
         """
         Process multiple data files and store results.
@@ -361,7 +386,7 @@ class BatchRingDownAnalyzer:
         directory: str,
         pattern: str = "*",
         verbose: bool = True,
-        n_jobs: Optional[int] = None,
+        n_jobs: int | None = None,
     ) -> ProcessResult:
         """
         Process all data files in a directory.
@@ -428,12 +453,14 @@ class BatchRingDownAnalyzer:
 
         return self.process_files(all_files, verbose=verbose, n_jobs=n_jobs)
 
-    def calculate_q_factors(self) -> list[float]:
+    def calculate_q_factors(self, *, include_invalid: bool = False) -> list[float]:
         """
         Calculate Q factors for all processed results.
 
-        Uses Q_nls from results if available (from estimate_full()), otherwise
-        calculates Q = π * f * τ for backward compatibility.
+        Uses valid Q_nls from results when available. Invalid or warning-status
+        Q estimates are skipped by default; pass include_invalid=True to use
+        Q_nls_raw for diagnostic/debug workflows. Results without validity
+        metadata keep the older Q = π * f * τ fallback behavior.
 
         Returns:
         --------
@@ -442,15 +469,12 @@ class BatchRingDownAnalyzer:
         """
         q_factors = []
         for r in self.results:
-            # Use Q_nls if available (from streamlined estimate_full())
-            if "Q_nls" in r and r["Q_nls"] is not None:
-                q = r["Q_nls"]
-            else:
-                # Fallback: calculate from f_nls and tau_est (backward compatibility)
-                tau_for_q = r.get("tau_nls") or r.get("tau_model") or r["tau_est"]
-                q = np.pi * r["f_nls"] * tau_for_q
-            q_factors.append(q)
+            q, q_valid, q_status = _result_q_value(r, include_invalid=include_invalid)
             r["Q"] = q
+            r["Q_valid"] = q_valid
+            r["Q_status"] = q_status
+            if q is not None:
+                q_factors.append(q)
 
         return q_factors
 
@@ -494,7 +518,15 @@ class BatchRingDownAnalyzer:
                     "|f_NLS - f_DFT| (Hz)": abs(r["f_nls"] - r["f_dft"]),
                     "Q_pre_crop": r.get("Q_pre_crop"),
                     "Q_NLS": r.get("Q_nls"),
+                    "Q_NLS_raw": r.get("Q_nls_raw"),
+                    "Q_NLS_valid": r.get("Q_nls_valid"),
+                    "Q_NLS_status": r.get("Q_nls_status"),
+                    "Q_NLS_reasons": ", ".join(r.get("Q_nls_reasons", [])),
                     "Q_DFT": r.get("Q_dft"),
+                    "Q_DFT_raw": r.get("Q_dft_raw"),
+                    "Q_DFT_valid": r.get("Q_dft_valid"),
+                    "Q_DFT_status": r.get("Q_dft_status"),
+                    "Q_DFT_reasons": ", ".join(r.get("Q_dft_reasons", [])),
                     "NLS success": r.get("nls_success"),
                     "DFT success": r.get("dft_success"),
                     "NLS used fallback": r.get("nls_used_fallback"),
@@ -543,7 +575,7 @@ class BatchRingDownAnalyzer:
             for key in ("|f_NLS - f_DFT| (Hz)", "Plugin bound std (Hz)", "sigma_est"):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".6e")
-            for key in ("Q_pre_crop", "Q_NLS", "Q_DFT", "Q"):
+            for key in ("Q_pre_crop", "Q_NLS", "Q_NLS_raw", "Q_DFT", "Q_DFT_raw", "Q"):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".2e")
             if "A0_est" in formatted:
@@ -743,7 +775,7 @@ class BatchRingDownAnalyzer:
             "ratio_statistics": ratio_stats,
         }
 
-    def get_q_factor_statistics(self) -> dict:
+    def get_q_factor_statistics(self, *, include_invalid: bool = False) -> dict:
         """
         Calculate Q factor statistics.
 
@@ -761,11 +793,29 @@ class BatchRingDownAnalyzer:
         if not self.results:
             return {}
 
-        # Ensure Q factors are calculated
-        if "Q" not in self.results[0]:
-            self.calculate_q_factors()
+        # Ensure Q factors are calculated using the requested validity policy.
+        self.calculate_q_factors(include_invalid=include_invalid)
 
-        q_values = np.array([r["Q"] for r in self.results], dtype=float)
+        q_values = np.array([r["Q"] for r in self.results if r.get("Q") is not None], dtype=float)
+        skipped_count = len(self.results) - len(q_values)
+        invalid_count = sum(
+            1 for r in self.results if "Q_nls_valid" in r and not bool(r.get("Q_nls_valid", False))
+        )
+
+        if len(q_values) == 0:
+            return {
+                "values": q_values,
+                "mean": np.nan,
+                "std": np.nan,
+                "min": np.nan,
+                "max": np.nan,
+                "range": np.nan,
+                "n_total": len(self.results),
+                "n_valid": 0,
+                "n_skipped": skipped_count,
+                "n_invalid": invalid_count,
+                "include_invalid": include_invalid,
+            }
 
         return {
             "values": q_values,
@@ -774,6 +824,11 @@ class BatchRingDownAnalyzer:
             "min": np.min(q_values),
             "max": np.max(q_values),
             "range": np.max(q_values) - np.min(q_values),
+            "n_total": len(self.results),
+            "n_valid": len(q_values),
+            "n_skipped": skipped_count,
+            "n_invalid": invalid_count,
+            "include_invalid": include_invalid,
         }
 
     def get_consistency_table(self) -> dict:

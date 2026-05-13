@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from ringdownanalysis.analyzer import RingDownAnalyzer
+from ringdownanalysis.estimators import EstimationResult
 
 
 def _make_moku_mat(t: np.ndarray, phase: np.ndarray) -> dict:
@@ -27,6 +28,16 @@ def _make_csv_content(t: np.ndarray, phase: np.ndarray) -> str:
     for ti, pi in zip(t, phase):
         lines.append(f"{ti:.6f},0,0,{pi:.6f}\n")
     return "".join(lines)
+
+
+class _FixedEstimator:
+    """Estimator stub used to exercise analyzer Q validity logic."""
+
+    def __init__(self, result: EstimationResult):
+        self.result = result
+
+    def estimate_full(self, x: np.ndarray, fs: float, **kwargs) -> EstimationResult:
+        return self.result
 
 
 class TestRingDownAnalyzer:
@@ -278,6 +289,105 @@ class TestRingDownAnalyzer:
         assert "tau_nls_at_lower_bound" in result
         assert "tau_dft_at_upper_bound" in result
         assert np.isfinite(result["Q_pre_crop"])
+
+    def test_bound_hit_tau_invalidates_user_facing_q(self):
+        """Q_nls is not exposed as valid when fitted tau lands on the optimizer bound."""
+        fs = 1000.0
+        t = np.arange(0.0, 10.0, 1.0 / fs)
+        data = np.cos(2.0 * np.pi * 1.0 * t)
+        upper_bound_tau = 10.0
+        raw_q = float(np.pi * upper_bound_tau)
+        analyzer = RingDownAnalyzer(
+            nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=upper_bound_tau, Q=raw_q)),
+            dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+        )
+        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+
+        result = analyzer.analyze_array(t=t, data=data, max_tau_multiplier=1.0)
+
+        assert result["tau_nls_at_upper_bound"] is True
+        assert result["Q_nls_raw"] == pytest.approx(raw_q)
+        assert result["Q_nls"] is None
+        assert result["Q_nls_valid"] is False
+        assert result["Q_nls_status"] == "invalid"
+        assert "nls_tau_at_upper_bound" in result["Q_nls_reasons"]
+
+    def test_crop_inflated_q_ratio_is_invalidated(self):
+        """Large raw-Q inflation relative to the pre-crop estimate is not treated as valid."""
+        fs = 1000.0
+        t = np.arange(0.0, 10.0, 1.0 / fs)
+        data = np.cos(2.0 * np.pi * 1.0 * t)
+        inflated_tau = 6.0
+        raw_q = float(np.pi * inflated_tau)
+        analyzer = RingDownAnalyzer(
+            nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=inflated_tau, Q=raw_q)),
+            dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+        )
+        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+
+        result = analyzer.analyze_array(t=t, data=data, max_tau_multiplier=1.0)
+
+        assert result["Q_pre_crop"] == pytest.approx(np.pi)
+        assert result["Q_nls_raw_to_pre_crop_ratio"] == pytest.approx(6.0)
+        assert result["Q_nls"] is None
+        assert result["Q_nls_valid"] is False
+        assert "nls_q_raw_vs_pre_crop_ratio_gt_5" in result["Q_nls_reasons"]
+
+    def test_default_analysis_uses_three_tau_crop(self):
+        """Default analyzer crop spans about three tau rather than one tau."""
+        fs = 1000.0
+        t = np.arange(0.0, 10.0, 1.0 / fs)
+        data = np.cos(2.0 * np.pi * 1.0 * t)
+        analyzer = RingDownAnalyzer(
+            nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+            dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+        )
+        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+
+        result = analyzer.analyze_array(t=t, data=data)
+
+        assert result["T_crop"] == pytest.approx(3.0)
+        assert result["N_crop"] == 3001
+
+    def test_analyze_array_constant_detrend_removes_mean(self):
+        """Array analysis can match file-style constant offset removal."""
+        fs = 1000.0
+        t = np.arange(0.0, 10.0, 1.0 / fs)
+        data = 10.0 + np.cos(2.0 * np.pi * 1.0 * t)
+        analyzer = RingDownAnalyzer(
+            nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+            dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+        )
+        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+
+        result = analyzer.analyze_array(t=t, data=data, detrend="constant")
+
+        assert np.mean(result["data"]) == pytest.approx(0.0, abs=1e-12)
+
+    def test_q_sensitivity_returns_window_records(self):
+        """Sensitivity helper returns DataFrame-ready Q reliability records."""
+        fs = 1000.0
+        t = np.arange(0.0, 10.0, 1.0 / fs)
+        data = np.cos(2.0 * np.pi * 1.0 * t)
+        analyzer = RingDownAnalyzer(
+            nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+            dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
+        )
+        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+
+        records = analyzer.q_sensitivity(
+            t,
+            data,
+            start_offsets=[0.0, 1.0],
+            durations=[2.0],
+            max_tau_multipliers=[1.0, 3.0],
+        )
+
+        assert len(records) == 4
+        assert {record["start_offset"] for record in records} == {0.0, 1.0}
+        assert {record["max_tau_multiplier"] for record in records} == {1.0, 3.0}
+        assert all("Q_nls_status" in record for record in records)
+        assert all("Q_nls_raw" in record for record in records)
 
 
 class TestAnalyzerEdgeCases:

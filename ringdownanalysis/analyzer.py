@@ -38,6 +38,17 @@ class NoiseEstimate(NamedTuple):
     message: str | None = None
 
 
+class QAssessment(NamedTuple):
+    """Validity assessment for a raw Q estimate."""
+
+    value: float | None
+    raw: float | None
+    valid: bool
+    status: str
+    reasons: list[str]
+    raw_to_pre_crop_ratio: float | None
+
+
 def _parse_array_input(
     t: np.ndarray | None = None,
     data: np.ndarray | None = None,
@@ -108,6 +119,15 @@ def _validate_signal_data(data: np.ndarray, *, source: str = "Signal data") -> n
     return data_arr
 
 
+def _apply_array_detrend(data: np.ndarray, detrend: str | None) -> np.ndarray:
+    """Apply optional preprocessing for array inputs."""
+    if detrend is None:
+        return data
+    if detrend == "constant":
+        return data - float(np.mean(data))
+    raise ValueError("detrend must be 'constant' or None")
+
+
 def _validate_max_tau_multiplier(max_tau_multiplier: float) -> float:
     """Validate crop multiplier before it can silently produce an empty crop."""
     value = float(max_tau_multiplier)
@@ -116,6 +136,11 @@ def _validate_max_tau_multiplier(max_tau_multiplier: float) -> float:
             f"max_tau_multiplier must be positive and finite, got {max_tau_multiplier}"
         )
     return value
+
+
+def _is_positive_finite(value: float | None) -> bool:
+    """Return True for finite, strictly positive scalar values."""
+    return value is not None and np.isfinite(value) and value > 0
 
 
 def _near_bound(
@@ -127,6 +152,91 @@ def _near_bound(
     span = max(abs(upper - lower), abs(upper), abs(lower), 1.0)
     tol = rtol * span
     return abs(float(value) - lower) <= tol, abs(float(value) - upper) <= tol
+
+
+def _assess_q_estimate(
+    *,
+    method: str,
+    raw_q: float | None,
+    tau: float | None,
+    success: bool,
+    used_fallback: bool,
+    tau_at_lower_bound: bool,
+    tau_at_upper_bound: bool,
+    tau_est_low_confidence: bool,
+    q_pre_crop: float,
+    t_fit: np.ndarray,
+) -> QAssessment:
+    """
+    Classify a raw Q estimate before exposing it as a user-facing value.
+
+    Raw optimizer output remains available, but Q is only marked valid when
+    the fitted tau is identifiable enough to avoid known bound/crop artifacts.
+    """
+    hard_reasons: list[str] = []
+    warning_reasons: list[str] = []
+
+    if not success:
+        hard_reasons.append(f"{method}_fit_failed")
+    if used_fallback:
+        hard_reasons.append(f"{method}_used_fallback")
+    if not _is_positive_finite(tau):
+        hard_reasons.append(f"{method}_tau_missing_or_nonpositive")
+    if tau_at_lower_bound:
+        hard_reasons.append(f"{method}_tau_at_lower_bound")
+    if tau_at_upper_bound:
+        hard_reasons.append(f"{method}_tau_at_upper_bound")
+    if not _is_positive_finite(raw_q):
+        hard_reasons.append(f"{method}_q_missing_or_nonpositive")
+
+    raw_to_pre_crop_ratio: float | None = None
+    if _is_positive_finite(raw_q) and _is_positive_finite(q_pre_crop):
+        assert raw_q is not None
+        raw_to_pre_crop_ratio = float(raw_q / q_pre_crop)
+        if raw_to_pre_crop_ratio > 5.0:
+            hard_reasons.append(f"{method}_q_raw_vs_pre_crop_ratio_gt_5")
+        elif raw_to_pre_crop_ratio > 2.0:
+            warning_reasons.append(f"{method}_q_raw_vs_pre_crop_ratio_gt_2")
+        elif raw_to_pre_crop_ratio < 0.5:
+            warning_reasons.append(f"{method}_q_raw_vs_pre_crop_ratio_lt_0_5")
+
+    if tau_est_low_confidence:
+        warning_reasons.append("tau_est_low_confidence")
+
+    if _is_positive_finite(tau) and len(t_fit) > 0:
+        assert tau is not None
+        fit_duration = float(t_fit[-1] - t_fit[0])
+        if fit_duration / float(tau) < 1.0:
+            warning_reasons.append(f"{method}_fit_window_shorter_than_tau")
+
+    if hard_reasons:
+        return QAssessment(
+            value=None,
+            raw=float(raw_q) if raw_q is not None and np.isfinite(raw_q) else raw_q,
+            valid=False,
+            status="invalid",
+            reasons=hard_reasons + warning_reasons,
+            raw_to_pre_crop_ratio=raw_to_pre_crop_ratio,
+        )
+
+    if warning_reasons:
+        return QAssessment(
+            value=None,
+            raw=float(raw_q) if raw_q is not None else None,
+            valid=False,
+            status="warning",
+            reasons=warning_reasons,
+            raw_to_pre_crop_ratio=raw_to_pre_crop_ratio,
+        )
+
+    return QAssessment(
+        value=float(raw_q) if raw_q is not None else None,
+        raw=float(raw_q) if raw_q is not None else None,
+        valid=True,
+        status="valid",
+        reasons=[],
+        raw_to_pre_crop_ratio=raw_to_pre_crop_ratio,
+    )
 
 
 def _validate_uniform_timebase(
@@ -342,7 +452,7 @@ class RingDownAnalyzer:
         data: np.ndarray,
         tau_est: float,
         min_samples: int = 100,
-        max_tau_multiplier: float = 1.0,
+        max_tau_multiplier: float = 3.0,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Crop data to max_tau_multiplier*tau_est to avoid long noisy tail affecting frequency estimation.
@@ -358,7 +468,7 @@ class RingDownAnalyzer:
         min_samples : int
             Minimum number of samples required. If cropped data is shorter, return original.
         max_tau_multiplier : float
-            Multiplier for tau_est to determine maximum record length. Default is 1.0.
+            Multiplier for tau_est to determine maximum record length. Default is 3.0.
 
         Returns:
         --------
@@ -613,11 +723,10 @@ class RingDownAnalyzer:
 
         f_nls = result_nls.f
         f_dft = result_dft.f
-        Q_nls = result_nls.Q
-        Q_dft = result_dft.Q
+        Q_nls_raw = result_nls.Q
+        Q_dft_raw = result_dft.Q
         tau_nls = result_nls.tau
         tau_dft = result_dft.tau
-        tau_model = tau_nls if tau_nls is not None else tau_dft if tau_dft is not None else tau_est
         tau_est_at_lower, tau_est_at_upper = _near_bound(tau_est, tau_full_lower, tau_full_upper)
         tau_nls_at_lower, tau_nls_at_upper = _near_bound(
             tau_nls, tau_cropped_lower, tau_cropped_upper
@@ -632,6 +741,37 @@ class RingDownAnalyzer:
             or tau_est_at_lower
             or tau_est_at_upper
         )
+        Q_pre_crop = float(np.pi * f_nls * tau_est) if np.isfinite(f_nls) else np.nan
+        q_nls_assessment = _assess_q_estimate(
+            method="nls",
+            raw_q=Q_nls_raw,
+            tau=tau_nls,
+            success=result_nls.success,
+            used_fallback=result_nls.used_fallback,
+            tau_at_lower_bound=tau_nls_at_lower,
+            tau_at_upper_bound=tau_nls_at_upper,
+            tau_est_low_confidence=tau_est_low_confidence,
+            q_pre_crop=Q_pre_crop,
+            t_fit=t_crop,
+        )
+        q_dft_assessment = _assess_q_estimate(
+            method="dft",
+            raw_q=Q_dft_raw,
+            tau=tau_dft,
+            success=result_dft.success,
+            used_fallback=result_dft.used_fallback,
+            tau_at_lower_bound=tau_dft_at_lower,
+            tau_at_upper_bound=tau_dft_at_upper,
+            tau_est_low_confidence=tau_est_low_confidence,
+            q_pre_crop=Q_pre_crop,
+            t_fit=t_crop,
+        )
+        if q_nls_assessment.valid and tau_nls is not None:
+            tau_model = tau_nls
+        elif q_dft_assessment.valid and tau_dft is not None:
+            tau_model = tau_dft
+        else:
+            tau_model = tau_est
         noise_estimate = self.estimate_noise_parameters(
             data_cropped,
             t_crop,
@@ -688,9 +828,19 @@ class RingDownAnalyzer:
             "tau_dft_at_upper_bound": tau_dft_at_upper,
             "f_nls": f_nls,
             "f_dft": f_dft,
-            "Q_nls": Q_nls,
-            "Q_dft": Q_dft,
-            "Q_pre_crop": float(np.pi * f_nls * tau_est) if np.isfinite(f_nls) else np.nan,
+            "Q_nls": q_nls_assessment.value,
+            "Q_dft": q_dft_assessment.value,
+            "Q_nls_raw": q_nls_assessment.raw,
+            "Q_dft_raw": q_dft_assessment.raw,
+            "Q_nls_valid": q_nls_assessment.valid,
+            "Q_dft_valid": q_dft_assessment.valid,
+            "Q_nls_status": q_nls_assessment.status,
+            "Q_dft_status": q_dft_assessment.status,
+            "Q_nls_reasons": q_nls_assessment.reasons,
+            "Q_dft_reasons": q_dft_assessment.reasons,
+            "Q_nls_raw_to_pre_crop_ratio": q_nls_assessment.raw_to_pre_crop_ratio,
+            "Q_dft_raw_to_pre_crop_ratio": q_dft_assessment.raw_to_pre_crop_ratio,
+            "Q_pre_crop": Q_pre_crop,
             "nls_success": result_nls.success,
             "dft_success": result_dft.success,
             "nls_used_fallback": result_nls.used_fallback,
@@ -733,7 +883,8 @@ class RingDownAnalyzer:
         *,
         time_col: str | int = 0,
         data_col: str | int = 1,
-        max_tau_multiplier: float = 1.0,
+        max_tau_multiplier: float = 3.0,
+        detrend: str | None = None,
         initial_params: tuple | None = None,
         tau_init: float | None = None,
         max_nfev: int | None = None,
@@ -758,7 +909,11 @@ class RingDownAnalyzer:
         data_col : str or int, optional
             Column index or name for signal when data is a DataFrame. Default 1.
         max_tau_multiplier : float
-            Multiplier for tau_est when cropping data. Default 1.0.
+            Multiplier for tau_est when cropping data. Default 3.0 to avoid
+            treating a one-tau crop as sufficient evidence for Q.
+        detrend : {"constant", None}, optional
+            If "constant", subtract the array mean before analysis. File inputs
+            already remove a constant phase offset during loading.
         initial_params : tuple, optional
             (f0_init, phi0_init, A0_init, c0) to avoid redundant DFT. If None, estimated from data.
         tau_init : float, optional
@@ -793,6 +948,7 @@ class RingDownAnalyzer:
             t=t, data=data, fs=fs, time_col=time_col, data_col=data_col
         )
         data_arr = _validate_signal_data(data_arr)
+        data_arr = _apply_array_detrend(data_arr, detrend)
         if t is not None or hasattr(data, "iloc"):
             t_arr, fs = _validate_uniform_timebase(t_arr)
         else:
@@ -841,10 +997,107 @@ class RingDownAnalyzer:
 
         return result
 
+    def q_sensitivity(
+        self,
+        t: np.ndarray,
+        data: np.ndarray,
+        *,
+        start_offsets: list[float],
+        durations: list[float],
+        max_tau_multipliers: list[float] | None = None,
+        detrend: str | None = None,
+        initial_params: tuple | None = None,
+        tau_init: float | None = None,
+        max_nfev: int | None = None,
+        ftol: float | None = None,
+        xtol: float | None = None,
+        gtol: float | None = None,
+    ) -> list[dict]:
+        """
+        Run Q reliability sensitivity over start offsets, durations, and crop multipliers.
+
+        Returns a list of DataFrame-ready records containing raw Q, validated Q,
+        status/reasons, and core tau/frequency diagnostics for each window.
+        """
+        t_arr, data_arr = _parse_array_input(t=t, data=data)
+        data_arr = _validate_signal_data(data_arr)
+        data_arr = _apply_array_detrend(data_arr, detrend)
+        t_arr, _ = _validate_uniform_timebase(t_arr)
+
+        multipliers = max_tau_multipliers if max_tau_multipliers is not None else [3.0]
+        multipliers = [_validate_max_tau_multiplier(multiplier) for multiplier in multipliers]
+        starts = [float(start) for start in start_offsets]
+        window_durations = [float(duration) for duration in durations]
+
+        records: list[dict] = []
+        for start in starts:
+            if not np.isfinite(start) or start < 0:
+                raise ValueError(f"start offsets must be non-negative and finite, got {start}")
+            for duration in window_durations:
+                if not np.isfinite(duration) or duration <= 0:
+                    raise ValueError(f"durations must be positive and finite, got {duration}")
+                stop = start + duration
+                window_mask = (t_arr >= start) & (t_arr <= stop)
+                if int(np.count_nonzero(window_mask)) < 2:
+                    raise ValueError(
+                        f"window start={start} duration={duration} contains fewer than 2 samples"
+                    )
+
+                t_window = t_arr[window_mask]
+                data_window = data_arr[window_mask]
+                for multiplier in multipliers:
+                    result = self.analyze_array(
+                        t=t_window,
+                        data=data_window,
+                        max_tau_multiplier=multiplier,
+                        initial_params=initial_params,
+                        tau_init=tau_init,
+                        max_nfev=max_nfev,
+                        ftol=ftol,
+                        xtol=xtol,
+                        gtol=gtol,
+                    )
+                    records.append(
+                        {
+                            "start_offset": start,
+                            "duration": duration,
+                            "max_tau_multiplier": multiplier,
+                            "N": result["N"],
+                            "N_crop": result["N_crop"],
+                            "T": result["T"],
+                            "T_crop": result["T_crop"],
+                            "tau_est": result["tau_est"],
+                            "tau_est_low_confidence": result["tau_est_low_confidence"],
+                            "tau_nls": result["tau_nls"],
+                            "tau_dft": result["tau_dft"],
+                            "tau_nls_at_lower_bound": result["tau_nls_at_lower_bound"],
+                            "tau_nls_at_upper_bound": result["tau_nls_at_upper_bound"],
+                            "tau_dft_at_lower_bound": result["tau_dft_at_lower_bound"],
+                            "tau_dft_at_upper_bound": result["tau_dft_at_upper_bound"],
+                            "f_nls": result["f_nls"],
+                            "f_dft": result["f_dft"],
+                            "Q_pre_crop": result["Q_pre_crop"],
+                            "Q_nls": result["Q_nls"],
+                            "Q_nls_raw": result["Q_nls_raw"],
+                            "Q_nls_valid": result["Q_nls_valid"],
+                            "Q_nls_status": result["Q_nls_status"],
+                            "Q_nls_reasons": result["Q_nls_reasons"],
+                            "Q_nls_raw_to_pre_crop_ratio": result["Q_nls_raw_to_pre_crop_ratio"],
+                            "Q_dft": result["Q_dft"],
+                            "Q_dft_raw": result["Q_dft_raw"],
+                            "Q_dft_valid": result["Q_dft_valid"],
+                            "Q_dft_status": result["Q_dft_status"],
+                            "Q_dft_reasons": result["Q_dft_reasons"],
+                            "Q_dft_raw_to_pre_crop_ratio": result["Q_dft_raw_to_pre_crop_ratio"],
+                        }
+                    )
+
+        return records
+
     def analyze_file(
         self,
         filepath: str,
-        max_tau_multiplier: float = 1.0,
+        max_tau_multiplier: float = 3.0,
         *,
         initial_params: tuple | None = None,
         tau_init: float | None = None,
@@ -861,8 +1114,9 @@ class RingDownAnalyzer:
         filepath : str
             Path to the data file
         max_tau_multiplier : float
-            Multiplier for tau_est to determine maximum record length when cropping data.
-            Default is 1.0.
+            Multiplier for tau_est to determine maximum record length when
+            cropping data. Default is 3.0 to avoid treating a one-tau crop as
+            sufficient evidence for Q.
         initial_params : tuple, optional
             (f0_init, phi0_init, A0_init, c0) to avoid redundant DFT. If None, estimated from data.
         tau_init : float, optional
