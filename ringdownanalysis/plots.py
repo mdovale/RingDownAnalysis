@@ -10,6 +10,8 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .q_envelope import q_envelope_diagnostic
+
 
 def get_default_rc():
     """
@@ -98,6 +100,155 @@ def apply_plotting_style():
     """
     default_rc = get_default_rc()
     plt.rcParams.update(default_rc)
+
+
+def _select_q_for_overlay(result: dict, q_source: str) -> tuple[float | None, float | None, str]:
+    source = q_source.lower()
+    if source == "best":
+        candidates = (
+            ("Q_profile", "f_profile", "profile Q"),
+            ("Q_nls", "f_nls", "valid NLS Q"),
+            ("Q_dft", "f_dft", "valid DFT Q"),
+            ("Q_envelope", "f_profile", "envelope Q"),
+            ("Q_nls_raw", "f_nls", "raw NLS Q"),
+        )
+    else:
+        field_map = {
+            "profile": ("Q_profile", "f_profile", "profile Q"),
+            "nls": ("Q_nls", "f_nls", "valid NLS Q"),
+            "dft": ("Q_dft", "f_dft", "valid DFT Q"),
+            "nls_raw": ("Q_nls_raw", "f_nls", "raw NLS Q"),
+            "dft_raw": ("Q_dft_raw", "f_dft", "raw DFT Q"),
+            "envelope": ("Q_envelope", "f_profile", "envelope Q"),
+        }
+        if source not in field_map:
+            raise ValueError(
+                "q_source must be one of 'best', 'profile', 'nls', 'dft', "
+                "'nls_raw', 'dft_raw', or 'envelope'"
+            )
+        candidates = (field_map[source],)
+
+    fallback_f = result.get("f_profile") or result.get("f_nls") or result.get("f_dft")
+    for q_field, f_field, label in candidates:
+        q_value = result.get(q_field)
+        f_value = result.get(f_field) or fallback_f
+        if (
+            q_value is not None
+            and np.isfinite(q_value)
+            and q_value > 0
+            and f_value is not None
+            and np.isfinite(f_value)
+            and f_value > 0
+        ):
+            return float(q_value), float(f_value), label
+    return (
+        None,
+        float(fallback_f) if fallback_f is not None and np.isfinite(fallback_f) else None,
+        q_source,
+    )
+
+
+def plot_q_envelope_overlay(
+    ax,
+    result: dict,
+    q_source: str = "best",
+    *,
+    max_points: int = 20_000,
+    data_kwargs: dict | None = None,
+    envelope_kwargs: dict | None = None,
+    fit_kwargs: dict | None = None,
+    candidate_kwargs: dict | None = None,
+):
+    """
+    Plot measured peak-to-peak envelope and a candidate-Q exponential overlay.
+
+    Parameters
+    ----------
+    ax
+        Matplotlib axes to draw on.
+    result
+        Analyzer result dictionary containing ``t``, ``data``, frequency, and Q
+        fields.
+    q_source
+        Which Q to overlay: ``"best"``, ``"profile"``, ``"nls"``, ``"dft"``,
+        ``"nls_raw"``, ``"dft_raw"``, or ``"envelope"``.
+    """
+    t = np.asarray(result["t"], dtype=float)
+    data = np.asarray(result["data"], dtype=float)
+    q_value, f_hz, q_label = _select_q_for_overlay(result, q_source)
+    if f_hz is None:
+        raise ValueError("Could not determine a positive frequency for the Q envelope overlay")
+
+    diagnostic = q_envelope_diagnostic(t, data, f_hz, q=q_value)
+    if diagnostic.n_windows == 0:
+        raise ValueError("Could not compute envelope diagnostic: " + ", ".join(diagnostic.reasons))
+
+    data_style = {"color": "0.25", "linewidth": 0.8, "alpha": 0.55, "label": "data"}
+    envelope_style = {
+        "color": "#1E90FF",
+        "marker": ".",
+        "linestyle": "none",
+        "alpha": 0.75,
+        "label": "peak-to-peak envelope",
+    }
+    fit_style = {
+        "color": "#32CD32",
+        "linestyle": "--",
+        "linewidth": 1.4,
+        "label": "envelope fit",
+    }
+    candidate_style = {
+        "color": "#DC143C",
+        "linestyle": "-",
+        "linewidth": 1.4,
+        "label": q_label,
+    }
+    if data_kwargs:
+        data_style.update(data_kwargs)
+    if envelope_kwargs:
+        envelope_style.update(envelope_kwargs)
+    if fit_kwargs:
+        fit_style.update(fit_kwargs)
+    if candidate_kwargs:
+        candidate_style.update(candidate_kwargs)
+
+    stride = max(1, int(np.ceil(len(t) / max_points)))
+    center = float(np.median(data))
+    ax.plot(t[::stride], data[::stride], **data_style)
+    ax.plot(diagnostic.t_mid, center + diagnostic.amplitude, **envelope_style)
+    ax.plot(
+        diagnostic.t_mid,
+        center - diagnostic.amplitude,
+        color=envelope_style["color"],
+        marker=envelope_style["marker"],
+        linestyle=envelope_style["linestyle"],
+        alpha=envelope_style["alpha"],
+    )
+    ax.plot(diagnostic.t_mid, center + diagnostic.fitted_amplitude, **fit_style)
+    ax.plot(
+        diagnostic.t_mid,
+        center - diagnostic.fitted_amplitude,
+        color=fit_style["color"],
+        linestyle=fit_style["linestyle"],
+        linewidth=fit_style["linewidth"],
+    )
+
+    if q_value is not None and diagnostic.candidate_tau is not None:
+        ax.plot(diagnostic.t_mid, center + diagnostic.candidate_amplitude, **candidate_style)
+        ax.plot(
+            diagnostic.t_mid,
+            center - diagnostic.candidate_amplitude,
+            color=candidate_style["color"],
+            linestyle=candidate_style["linestyle"],
+            linewidth=candidate_style["linewidth"],
+        )
+
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Signal")
+    ax.set_title("Q Envelope Overlay")
+    ax.grid(True, alpha=0.3)
+    apply_legend(ax)
+    return ax
 
 
 # Apply default styles automatically when module is imported

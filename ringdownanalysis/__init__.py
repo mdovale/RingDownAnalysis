@@ -35,9 +35,11 @@ from .plots import (
     plot_aggregate_results,
     plot_individual_results,
     plot_performance_comparison,
+    plot_q_envelope_overlay,
     plot_q_individual_results,
     plot_q_performance_comparison,
 )
+from .q_envelope import QEnvelopeDiagnostic, q_envelope_diagnostic
 from .q_profile import ProfileQEstimator, QProfileResult
 from .signal import RingDownSignal
 
@@ -84,6 +86,7 @@ __all__ = [
     "NLSFrequencyEstimator",
     "DFTFrequencyEstimator",
     "EstimationResult",
+    "QEnvelopeDiagnostic",
     "ProfileQEstimator",
     "QProfileResult",
     "CRLBCalculator",
@@ -103,6 +106,8 @@ __all__ = [
     "plot_individual_results",
     "plot_aggregate_results",
     "plot_performance_comparison",
+    "plot_q_envelope_overlay",
     "plot_q_individual_results",
     "plot_q_performance_comparison",
+    "q_envelope_diagnostic",
 ]
