@@ -38,6 +38,7 @@ from .plots import (
     plot_q_individual_results,
     plot_q_performance_comparison,
 )
+from .q_profile import ProfileQEstimator, QProfileResult
 from .signal import RingDownSignal
 
 # Configure package logger
@@ -83,6 +84,8 @@ __all__ = [
     "NLSFrequencyEstimator",
     "DFTFrequencyEstimator",
     "EstimationResult",
+    "ProfileQEstimator",
+    "QProfileResult",
     "CRLBCalculator",
     "RingDownDataLoader",
     "RingDownAnalyzer",

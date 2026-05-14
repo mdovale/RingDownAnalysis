@@ -22,6 +22,7 @@ from .estimators import (
     _sanitize_initial_parameters,
     _sanitize_tau_guess,
 )
+from .q_profile import ProfileQEstimator
 
 logger = logging.getLogger(__name__)
 
@@ -289,14 +290,16 @@ class RingDownAnalyzer:
     2. Estimate tau from full data using NLS
     3. Crop data to max_tau_multiplier*tau to avoid long noisy tail
     4. Estimate frequency using NLS and DFT methods
-    5. Estimate noise parameters for CRLB calculation
-    6. Calculate CRLB
+    5. Profile Q over log(tau) with separable least squares
+    6. Estimate noise parameters for CRLB calculation
+    7. Calculate CRLB
     """
 
     def __init__(
         self,
         nls_estimator: NLSFrequencyEstimator | None = None,
         dft_estimator: DFTFrequencyEstimator | None = None,
+        q_profile_estimator: ProfileQEstimator | None = None,
     ):
         """
         Initialize analyzer.
@@ -307,9 +310,12 @@ class RingDownAnalyzer:
             NLS frequency estimator. If None, creates default (tau unknown).
         dft_estimator : DFTFrequencyEstimator, optional
             DFT frequency estimator. If None, creates default (rectangular window).
+        q_profile_estimator : ProfileQEstimator, optional
+            Profile-likelihood Q estimator. If None, creates default.
         """
         self.nls_estimator = nls_estimator or NLSFrequencyEstimator(tau_known=None)
         self.dft_estimator = dft_estimator or DFTFrequencyEstimator(window="rect")
+        self.q_profile_estimator = q_profile_estimator or ProfileQEstimator()
         self.crlb_calc = CRLBCalculator()
 
     def estimate_tau(
@@ -766,6 +772,14 @@ class RingDownAnalyzer:
             q_pre_crop=Q_pre_crop,
             t_fit=t_crop,
         )
+        profile_f_init = f_nls if np.isfinite(f_nls) and f_nls > 0 else f_dft
+        q_profile = self.q_profile_estimator.estimate(
+            t,
+            data,
+            fs,
+            f_init=profile_f_init,
+            tau_init=tau_est,
+        )
         if q_nls_assessment.valid and tau_nls is not None:
             tau_model = tau_nls
         elif q_dft_assessment.valid and tau_dft is not None:
@@ -841,6 +855,23 @@ class RingDownAnalyzer:
             "Q_nls_raw_to_pre_crop_ratio": q_nls_assessment.raw_to_pre_crop_ratio,
             "Q_dft_raw_to_pre_crop_ratio": q_dft_assessment.raw_to_pre_crop_ratio,
             "Q_pre_crop": Q_pre_crop,
+            "Q_profile": q_profile.Q,
+            "Q_profile_valid": q_profile.valid,
+            "Q_profile_status": q_profile.status,
+            "Q_profile_reasons": q_profile.reasons,
+            "tau_profile": q_profile.tau_hat,
+            "f_profile": q_profile.f_hat,
+            "Q_profile_ci95": q_profile.ci95,
+            "Q_profile_lower_limit_95": q_profile.lower_limit_95,
+            "Q_profile_upper_limit_95": q_profile.upper_limit_95,
+            "Q_profile_method": q_profile.method,
+            "Q_profile_rss_min": q_profile.rss_min,
+            "Q_profile_sigma": q_profile.sigma,
+            "Q_profile_dof": q_profile.dof,
+            "Q_profile_n_grid": q_profile.n_grid,
+            "Q_profile_tau_grid": q_profile.profile_tau,
+            "Q_profile_q_grid": q_profile.profile_q,
+            "Q_profile_delta": q_profile.profile_delta,
             "nls_success": result_nls.success,
             "dft_success": result_dft.success,
             "nls_used_fallback": result_nls.used_fallback,
@@ -1089,6 +1120,16 @@ class RingDownAnalyzer:
                             "Q_dft_status": result["Q_dft_status"],
                             "Q_dft_reasons": result["Q_dft_reasons"],
                             "Q_dft_raw_to_pre_crop_ratio": result["Q_dft_raw_to_pre_crop_ratio"],
+                            "Q_profile": result["Q_profile"],
+                            "Q_profile_valid": result["Q_profile_valid"],
+                            "Q_profile_status": result["Q_profile_status"],
+                            "Q_profile_reasons": result["Q_profile_reasons"],
+                            "tau_profile": result["tau_profile"],
+                            "f_profile": result["f_profile"],
+                            "Q_profile_ci95": result["Q_profile_ci95"],
+                            "Q_profile_lower_limit_95": result["Q_profile_lower_limit_95"],
+                            "Q_profile_upper_limit_95": result["Q_profile_upper_limit_95"],
+                            "Q_profile_method": result["Q_profile_method"],
                         }
                     )
 

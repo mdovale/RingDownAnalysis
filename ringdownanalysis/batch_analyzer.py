@@ -112,6 +112,21 @@ def _result_q_value(
     result: dict, *, include_invalid: bool = False
 ) -> tuple[float | None, bool, str]:
     """Return the preferred Q value plus validity metadata for a result."""
+    has_profile = "Q_profile_valid" in result
+    if has_profile:
+        q_valid = bool(result.get("Q_profile_valid", False))
+        q_status = str(result.get("Q_profile_status", "valid" if q_valid else "invalid"))
+        q = result.get("Q_profile")
+        if q is not None and np.isfinite(q):
+            return float(q), q_valid, q_status
+        if not include_invalid:
+            return None, False, q_status
+
+        q = result.get("Q_nls_raw")
+        if q is None or not np.isfinite(q):
+            return None, False, q_status
+        return float(q), False, q_status
+
     has_validity = "Q_nls_valid" in result
     q_valid = bool(result.get("Q_nls_valid", True))
     q_status = str(result.get("Q_nls_status", "valid" if q_valid else "invalid"))
@@ -457,9 +472,10 @@ class BatchRingDownAnalyzer:
         """
         Calculate Q factors for all processed results.
 
-        Uses valid Q_nls from results when available. Invalid or warning-status
-        Q estimates are skipped by default; pass include_invalid=True to use
-        Q_nls_raw for diagnostic/debug workflows. Results without validity
+        Uses valid profile Q when available. If profile-Q metadata is present
+        but the profile is invalid or limit-only, the result is skipped by
+        default instead of falling back to NLS. Pass include_invalid=True to use
+        raw NLS Q for diagnostic/debug workflows. Results without validity
         metadata keep the older Q = π * f * τ fallback behavior.
 
         Returns:
@@ -527,6 +543,15 @@ class BatchRingDownAnalyzer:
                     "Q_DFT_valid": r.get("Q_dft_valid"),
                     "Q_DFT_status": r.get("Q_dft_status"),
                     "Q_DFT_reasons": ", ".join(r.get("Q_dft_reasons", [])),
+                    "Q_profile": r.get("Q_profile"),
+                    "Q_profile_valid": r.get("Q_profile_valid"),
+                    "Q_profile_status": r.get("Q_profile_status"),
+                    "Q_profile_reasons": ", ".join(r.get("Q_profile_reasons", [])),
+                    "Q_profile_ci95": r.get("Q_profile_ci95"),
+                    "Q_profile_lower_limit_95": r.get("Q_profile_lower_limit_95"),
+                    "Q_profile_upper_limit_95": r.get("Q_profile_upper_limit_95"),
+                    "tau_profile (s)": r.get("tau_profile"),
+                    "f_profile (Hz)": r.get("f_profile"),
                     "NLS success": r.get("nls_success"),
                     "DFT success": r.get("dft_success"),
                     "NLS used fallback": r.get("nls_used_fallback"),
@@ -566,16 +591,27 @@ class BatchRingDownAnalyzer:
                 "tau_est (s)",
                 "tau_nls (s)",
                 "tau_dft (s)",
+                "tau_profile (s)",
             ):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".2f")
-            for key in ("f_NLS (Hz)", "f_DFT (Hz)"):
+            for key in ("f_NLS (Hz)", "f_DFT (Hz)", "f_profile (Hz)"):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".6f")
             for key in ("|f_NLS - f_DFT| (Hz)", "Plugin bound std (Hz)", "sigma_est"):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".6e")
-            for key in ("Q_pre_crop", "Q_NLS", "Q_NLS_raw", "Q_DFT", "Q_DFT_raw", "Q"):
+            for key in (
+                "Q_pre_crop",
+                "Q_NLS",
+                "Q_NLS_raw",
+                "Q_DFT",
+                "Q_DFT_raw",
+                "Q_profile",
+                "Q_profile_lower_limit_95",
+                "Q_profile_upper_limit_95",
+                "Q",
+            ):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".2e")
             if "A0_est" in formatted:
@@ -798,8 +834,30 @@ class BatchRingDownAnalyzer:
 
         q_values = np.array([r["Q"] for r in self.results if r.get("Q") is not None], dtype=float)
         skipped_count = len(self.results) - len(q_values)
+        profile_statuses = [
+            str(r.get("Q_profile_status"))
+            for r in self.results
+            if "Q_profile_status" in r and not bool(r.get("Q_profile_valid", False))
+        ]
+        profile_limit_count = sum(
+            1
+            for status in profile_statuses
+            if status in {"lower_limit", "upper_limit", "unbounded"}
+        )
         invalid_count = sum(
-            1 for r in self.results if "Q_nls_valid" in r and not bool(r.get("Q_nls_valid", False))
+            1
+            for r in self.results
+            if (
+                "Q_profile_valid" in r
+                and not bool(r.get("Q_profile_valid", False))
+                and str(r.get("Q_profile_status"))
+                not in {"lower_limit", "upper_limit", "unbounded"}
+            )
+            or (
+                "Q_profile_valid" not in r
+                and "Q_nls_valid" in r
+                and not bool(r.get("Q_nls_valid", False))
+            )
         )
 
         if len(q_values) == 0:
@@ -814,6 +872,7 @@ class BatchRingDownAnalyzer:
                 "n_valid": 0,
                 "n_skipped": skipped_count,
                 "n_invalid": invalid_count,
+                "n_profile_limits": profile_limit_count,
                 "include_invalid": include_invalid,
             }
 
@@ -828,6 +887,7 @@ class BatchRingDownAnalyzer:
             "n_valid": len(q_values),
             "n_skipped": skipped_count,
             "n_invalid": invalid_count,
+            "n_profile_limits": profile_limit_count,
             "include_invalid": include_invalid,
         }
 

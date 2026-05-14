@@ -110,6 +110,54 @@ class TestBatchRingDownAnalyzer:
         assert batch_analyzer.results[0]["Q"] == 999.0
         assert batch_analyzer.results[0]["Q_valid"] is False
 
+    def test_calculate_q_factors_prefers_valid_profile_q(self):
+        """Profile Q is the preferred aggregate Q when it is valid."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_nls": 123.0,
+                "Q_nls_raw": 123.0,
+                "Q_nls_valid": True,
+                "Q_nls_status": "valid",
+                "Q_profile": 456.0,
+                "Q_profile_valid": True,
+                "Q_profile_status": "valid",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == [456.0]
+        assert batch_analyzer.results[0]["Q"] == 456.0
+        assert batch_analyzer.results[0]["Q_valid"] is True
+        assert batch_analyzer.results[0]["Q_status"] == "valid"
+
+    def test_calculate_q_factors_skips_invalid_profile_without_nls_fallback(self):
+        """Invalid profile Q prevents silent fallback to otherwise valid NLS Q."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_nls": 123.0,
+                "Q_nls_raw": 123.0,
+                "Q_nls_valid": True,
+                "Q_nls_status": "valid",
+                "Q_profile": None,
+                "Q_profile_valid": False,
+                "Q_profile_status": "lower_limit",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == []
+        assert batch_analyzer.results[0]["Q"] is None
+        assert batch_analyzer.results[0]["Q_valid"] is False
+        assert batch_analyzer.results[0]["Q_status"] == "lower_limit"
+
     def test_get_summary_table(self):
         """Test summary table generation."""
         batch_analyzer = BatchRingDownAnalyzer()
@@ -342,6 +390,32 @@ class TestBatchRingDownAnalyzer:
         assert stats["n_valid"] == 1
         assert stats["n_skipped"] == 1
         assert stats["n_invalid"] == 1
+        assert stats["n_profile_limits"] == 0
+
+    def test_get_q_factor_statistics_counts_profile_limits(self):
+        """Q statistics report profile limit-only records separately."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_nls": 123.0,
+                "Q_nls_raw": 123.0,
+                "Q_nls_valid": True,
+                "Q_nls_status": "valid",
+                "Q_profile": None,
+                "Q_profile_valid": False,
+                "Q_profile_status": "lower_limit",
+            },
+        ]
+
+        stats = batch_analyzer.get_q_factor_statistics()
+
+        assert stats["n_total"] == 1
+        assert stats["n_valid"] == 0
+        assert stats["n_skipped"] == 1
+        assert stats["n_invalid"] == 0
+        assert stats["n_profile_limits"] == 1
 
     def test_get_consistency_table(self):
         """Test consistency table generation."""

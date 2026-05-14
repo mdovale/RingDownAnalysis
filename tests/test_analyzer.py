@@ -187,6 +187,10 @@ class TestRingDownAnalyzer:
         assert "f_dft" in result
         assert "crlb_std_f" in result
         assert "uncertainty_valid" in result
+        assert "Q_profile" in result
+        assert "Q_profile_valid" in result
+        assert "Q_profile_status" in result
+        assert "Q_profile_method" in result
         assert "filename" not in result
         assert np.isfinite(result["f_nls"])
         assert np.isfinite(result["f_dft"])
@@ -388,6 +392,8 @@ class TestRingDownAnalyzer:
         assert {record["max_tau_multiplier"] for record in records} == {1.0, 3.0}
         assert all("Q_nls_status" in record for record in records)
         assert all("Q_nls_raw" in record for record in records)
+        assert all("Q_profile_status" in record for record in records)
+        assert all("Q_profile_lower_limit_95" in record for record in records)
 
 
 class TestAnalyzerEdgeCases:
