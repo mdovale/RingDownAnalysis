@@ -86,22 +86,51 @@ df_display = pd.DataFrame(batch_analyzer.get_formatted_summary_table()['data'])
 
 See `examples/usage_example.py` and `examples/batch_analysis_example.py` for more complete examples.
 
-#### Q Validity and Raw Diagnostics
+#### Profile Q, Limits, and Raw Diagnostics
 
 Real ring-down records may not identify the decay time constant well enough for
-a trustworthy Q estimate. `RingDownAnalyzer` therefore separates raw optimizer
-outputs from user-facing Q values:
+a trustworthy Q estimate. `RingDownAnalyzer` therefore separates the preferred
+profile-likelihood Q result from raw optimizer diagnostics:
 
-- `Q_nls_raw` and `Q_dft_raw` preserve the direct fitted products.
-- `Q_nls` and `Q_dft` are only populated when the corresponding estimate is
-  cleanly valid.
+- `Q_profile` is the recommended finite Q estimate. It is only populated when a
+  log-tau profile closes on both sides of the optimum.
+- `Q_profile_valid`, `Q_profile_status`, `Q_profile_reasons`,
+  `Q_profile_ci95`, `Q_profile_lower_limit_95`, and
+  `Q_profile_upper_limit_95` explain whether the data support a finite Q,
+  a one-sided limit, or no useful bound.
+- `Q_nls_raw` and `Q_dft_raw` preserve the direct fitted products from the
+  legacy optimizers.
+- `Q_nls` and `Q_dft` are retained as compatibility diagnostics and are only
+  populated when the corresponding estimate is cleanly valid.
 - `Q_nls_valid`, `Q_dft_valid`, `Q_nls_status`, `Q_dft_status`, and the
   `Q_*_reasons` lists explain invalid or warning-status estimates.
 
-Batch Q statistics exclude invalid or warning-status Q values by default. Pass
-`include_invalid=True` to `calculate_q_factors()` or
-`get_q_factor_statistics()` only for diagnostic work where raw fitted values are
-explicitly desired.
+Common `Q_profile_status` values are:
+
+- `valid`: `Q_profile` and `Q_profile_ci95` are finite and may be quoted.
+- `lower_limit`: the record supports a lower bound, but not a finite upper
+  interval endpoint. Quote `Q_profile_lower_limit_95`, not `Q_profile`.
+- `upper_limit`: the record supports an upper bound only.
+- `unbounded`, `invalid`, or `failed`: the record does not support a finite Q.
+
+Always check status before quoting Q:
+
+```python
+result = analyzer.analyze_array(t=t, data=x)
+
+if result["Q_profile_valid"]:
+    print(f"Q = {result['Q_profile']:.3e} with 95% interval {result['Q_profile_ci95']}")
+elif result["Q_profile_status"] == "lower_limit":
+    print(f"Q > {result['Q_profile_lower_limit_95']:.3e} at approximately 95% confidence")
+else:
+    print(f"Profile Q unavailable: {result['Q_profile_status']} {result['Q_profile_reasons']}")
+```
+
+Batch Q statistics prefer valid `Q_profile` values. If profile-Q metadata is
+present but the profile is invalid or limit-only, the record is skipped by
+default instead of falling back to NLS. Pass `include_invalid=True` to
+`calculate_q_factors()` or `get_q_factor_statistics()` only for diagnostic work
+where raw fitted values are explicitly desired.
 
 For array workflows, pass `detrend="constant"` to `analyze_array()` when you
 want the same constant-offset removal used by file loading. To inspect
