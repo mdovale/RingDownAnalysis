@@ -7,17 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-13
+
 ### Added
 
+- First-stage Q reliability hardening for NLS and DFT estimates, including raw
+  Q diagnostics, validity flags, status strings, reasons, tau-bound flags, crop
+  diagnostics, and Q sensitivity records
+- Profile-likelihood / variable-projection Q estimator with finite intervals,
+  one-sided limits, and explicit validity/status fields
+- `Q_profile` analyzer outputs, profile grids, profile confidence intervals, and
+  profile limit fields
+- Batch Q summaries that prefer valid profile Q values and count profile
+  limit-only records separately
+- Deterministic profile-Q example notebook and expanded batch notebook Q
+  comparison cells
+- EDU Day 2 ring-down analysis notebook
+- Data analysis pipeline audit document
 - Sphinx API documentation in `docs/api/`
 - Data format specification in `docs/data_format.md`
 - `requirements.txt` with pinned core dependencies for reproducibility
+- Monte Carlo test coverage for failed-trial statistics
 
 ### Changed
 
+- Documented profile-Q interpretation, raw NLS/DFT diagnostics, and one-sided
+  limits in README
+- Batch Q calculations now skip invalid or warning-status Q estimates by default
+  and keep raw Q values available for diagnostic workflows
+- Default analyzer crop policy now uses a three-tau crop to avoid treating a
+  one-tau window as sufficient evidence for Q identifiability
+- CI type checking now targets Python 3.10 compatibility, with related typing
+  and lint cleanup across examples, benchmarks, compatibility helpers, data
+  loading, Monte Carlo analysis, and tests
 - Documented raised exceptions in `RingDownDataLoader`, estimators, and `analyze_file()`
 - Added Security section to README (trusted-source assumption, path handling)
-- Extended `.gitignore` for Jupyter exports and LaTeX build outputs
+- Extended `.gitignore` for handoff documents, Jupyter exports, and LaTeX build
+  outputs
+
+### Fixed
+
+- Bound-hit and crop-inflated NLS/DFT Q estimates are no longer exposed as
+  valid user-facing Q values
 
 ## [0.1.0] - 2025-03-17
 
@@ -41,5 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MAT files loaded with `struct_as_record=False` to reduce deserialization risks
 - Path traversal rejected in `process_directory()` pattern
 
-[Unreleased]: https://github.com/mdovale/RingDownAnalysis/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mdovale/RingDownAnalysis/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mdovale/RingDownAnalysis/compare/v1.0.3...v1.1.0
 [0.1.0]: https://github.com/mdovale/RingDownAnalysis/releases/tag/v0.1.0
