@@ -191,6 +191,10 @@ class TestRingDownAnalyzer:
         assert "Q_profile_valid" in result
         assert "Q_profile_status" in result
         assert "Q_profile_method" in result
+        assert "Q_profile_tau_init_source" in result
+        assert "Q_envelope" in result
+        assert "Q_envelope_status" in result
+        assert "Q_envelope_candidate_agrees" in result
         assert "filename" not in result
         assert np.isfinite(result["f_nls"])
         assert np.isfinite(result["f_dft"])
@@ -394,6 +398,8 @@ class TestRingDownAnalyzer:
         assert all("Q_nls_raw" in record for record in records)
         assert all("Q_profile_status" in record for record in records)
         assert all("Q_profile_lower_limit_95" in record for record in records)
+        assert all("Q_envelope_status" in record for record in records)
+        assert all("Q_envelope_candidate_agrees" in record for record in records)
 
 
 class TestAnalyzerEdgeCases:

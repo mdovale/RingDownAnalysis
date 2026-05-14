@@ -22,6 +22,7 @@ from .estimators import (
     _sanitize_initial_parameters,
     _sanitize_tau_guess,
 )
+from .q_envelope import q_envelope_diagnostic
 from .q_profile import ProfileQEstimator
 
 logger = logging.getLogger(__name__)
@@ -773,13 +774,29 @@ class RingDownAnalyzer:
             t_fit=t_crop,
         )
         profile_f_init = f_nls if np.isfinite(f_nls) and f_nls > 0 else f_dft
+        q_envelope_seed = q_envelope_diagnostic(t, data, profile_f_init)
+        if q_envelope_seed.valid and q_envelope_seed.tau is not None:
+            profile_tau_init = q_envelope_seed.tau
+            profile_tau_init_source = "q_envelope"
+        else:
+            profile_tau_init = tau_est
+            profile_tau_init_source = "tau_est"
         q_profile = self.q_profile_estimator.estimate(
             t,
             data,
             fs,
             f_init=profile_f_init,
-            tau_init=tau_est,
+            tau_init=profile_tau_init,
         )
+        if _is_positive_finite(q_profile.Q):
+            candidate_envelope_q = q_profile.Q
+        elif _is_positive_finite(q_nls_assessment.raw):
+            candidate_envelope_q = q_nls_assessment.raw
+        elif _is_positive_finite(q_dft_assessment.raw):
+            candidate_envelope_q = q_dft_assessment.raw
+        else:
+            candidate_envelope_q = None
+        q_envelope = q_envelope_diagnostic(t, data, profile_f_init, q=candidate_envelope_q)
         if q_nls_assessment.valid and tau_nls is not None:
             tau_model = tau_nls
         elif q_dft_assessment.valid and tau_dft is not None:
@@ -865,6 +882,8 @@ class RingDownAnalyzer:
             "Q_profile_lower_limit_95": q_profile.lower_limit_95,
             "Q_profile_upper_limit_95": q_profile.upper_limit_95,
             "Q_profile_method": q_profile.method,
+            "Q_profile_tau_init": profile_tau_init,
+            "Q_profile_tau_init_source": profile_tau_init_source,
             "Q_profile_rss_min": q_profile.rss_min,
             "Q_profile_sigma": q_profile.sigma,
             "Q_profile_dof": q_profile.dof,
@@ -872,6 +891,28 @@ class RingDownAnalyzer:
             "Q_profile_tau_grid": q_profile.profile_tau,
             "Q_profile_q_grid": q_profile.profile_q,
             "Q_profile_delta": q_profile.profile_delta,
+            "tau_envelope": q_envelope.tau,
+            "Q_envelope": q_envelope.Q,
+            "Q_envelope_valid": q_envelope.valid,
+            "Q_envelope_status": q_envelope.status,
+            "Q_envelope_reasons": q_envelope.reasons,
+            "Q_envelope_method": q_envelope.method,
+            "Q_envelope_n_windows": q_envelope.n_windows,
+            "Q_envelope_n_windows_used": q_envelope.n_windows_used,
+            "Q_envelope_log_amplitude_slope": q_envelope.log_amplitude_slope,
+            "Q_envelope_log_amplitude_intercept": q_envelope.log_amplitude_intercept,
+            "Q_envelope_log_amplitude_rmse": q_envelope.log_amplitude_rmse,
+            "Q_envelope_slope_stderr": q_envelope.slope_stderr,
+            "Q_envelope_candidate_Q": q_envelope.candidate_q,
+            "Q_envelope_candidate_tau": q_envelope.candidate_tau,
+            "Q_envelope_candidate_log_rmse": q_envelope.candidate_log_rmse,
+            "Q_envelope_candidate_slope_mismatch": q_envelope.candidate_slope_mismatch,
+            "Q_envelope_candidate_agrees": q_envelope.candidate_agrees,
+            "Q_envelope_t_mid": q_envelope.t_mid,
+            "Q_envelope_amplitude": q_envelope.amplitude,
+            "Q_envelope_used": q_envelope.used,
+            "Q_envelope_fit_amplitude": q_envelope.fitted_amplitude,
+            "Q_envelope_candidate_amplitude": q_envelope.candidate_amplitude,
             "nls_success": result_nls.success,
             "dft_success": result_dft.success,
             "nls_used_fallback": result_nls.used_fallback,
@@ -1130,6 +1171,20 @@ class RingDownAnalyzer:
                             "Q_profile_lower_limit_95": result["Q_profile_lower_limit_95"],
                             "Q_profile_upper_limit_95": result["Q_profile_upper_limit_95"],
                             "Q_profile_method": result["Q_profile_method"],
+                            "Q_profile_tau_init": result["Q_profile_tau_init"],
+                            "Q_profile_tau_init_source": result["Q_profile_tau_init_source"],
+                            "tau_envelope": result["tau_envelope"],
+                            "Q_envelope": result["Q_envelope"],
+                            "Q_envelope_valid": result["Q_envelope_valid"],
+                            "Q_envelope_status": result["Q_envelope_status"],
+                            "Q_envelope_reasons": result["Q_envelope_reasons"],
+                            "Q_envelope_candidate_log_rmse": result[
+                                "Q_envelope_candidate_log_rmse"
+                            ],
+                            "Q_envelope_candidate_slope_mismatch": result[
+                                "Q_envelope_candidate_slope_mismatch"
+                            ],
+                            "Q_envelope_candidate_agrees": result["Q_envelope_candidate_agrees"],
                         }
                     )
 
