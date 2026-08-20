@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ringdownanalysis.analyzer import RingDownAnalyzer
+from ringdownanalysis.analyzer import RingDownAnalyzer, TauEstimate
 from ringdownanalysis.estimators import EstimationResult
 
 
@@ -309,7 +309,7 @@ class TestRingDownAnalyzer:
             nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=upper_bound_tau, Q=raw_q)),
             dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
         )
-        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+        analyzer.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(1.0, True)
 
         result = analyzer.analyze_array(t=t, data=data, max_tau_multiplier=1.0)
 
@@ -331,7 +331,7 @@ class TestRingDownAnalyzer:
             nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=inflated_tau, Q=raw_q)),
             dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
         )
-        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+        analyzer.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(1.0, True)
 
         result = analyzer.analyze_array(t=t, data=data, max_tau_multiplier=1.0)
 
@@ -350,7 +350,7 @@ class TestRingDownAnalyzer:
             nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
             dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
         )
-        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+        analyzer.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(1.0, True)
 
         result = analyzer.analyze_array(t=t, data=data)
 
@@ -366,7 +366,7 @@ class TestRingDownAnalyzer:
             nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
             dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
         )
-        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+        analyzer.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(1.0, True)
 
         result = analyzer.analyze_array(t=t, data=data, detrend="constant")
 
@@ -381,7 +381,7 @@ class TestRingDownAnalyzer:
             nls_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
             dft_estimator=_FixedEstimator(EstimationResult(f=1.0, tau=1.0, Q=float(np.pi))),
         )
-        analyzer.estimate_tau = lambda *args, **kwargs: 1.0
+        analyzer.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(1.0, True)
 
         records = analyzer.q_sensitivity(
             t,
@@ -425,7 +425,7 @@ class TestCropCascadeGuard:
         t, data = self._decaying_signal(tau=2.0)
         analyzer = RingDownAnalyzer()
         # Simulate the coherence collapse of the full-record NLS fit.
-        analyzer.estimate_tau = lambda *args, **kwargs: 0.5
+        analyzer.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(0.5, True)
 
         result = analyzer.analyze_array(t=t, data=data)
 
@@ -441,7 +441,7 @@ class TestCropCascadeGuard:
         """When tau_est and the envelope tau agree, cropping behaves as before."""
         t, data = self._decaying_signal(tau=2.0)
         analyzer = RingDownAnalyzer()
-        analyzer.estimate_tau = lambda *args, **kwargs: 2.0
+        analyzer.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(2.0, True)
 
         result = analyzer.analyze_array(t=t, data=data)
 
@@ -449,6 +449,47 @@ class TestCropCascadeGuard:
         assert result["tau_crop"] == pytest.approx(2.0)
         assert result["tau_est_envelope_ratio"] is not None
         assert result["tau_est_envelope_ratio"] <= 3.0
+
+
+class TestEstimateTauFitStatus:
+    """estimate_tau failures must be visible in the result, not only in logs."""
+
+    def test_estimate_tau_with_status_success(self, sample_ringdown_signal):
+        """A converged fit reports fit_success=True with a finite tau."""
+        t, data, fs = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        estimate = analyzer.estimate_tau_with_status(data, t, fs)
+        assert isinstance(estimate, TauEstimate)
+        assert estimate.fit_success is True
+        assert np.isfinite(estimate.tau) and estimate.tau > 0
+
+    def test_estimate_tau_with_status_failure_returns_seed(self, sample_ringdown_signal):
+        """max_nfev=1 aborts the fit: the seed comes back flagged as a failure."""
+        t, data, fs = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        estimate = analyzer.estimate_tau_with_status(data, t, fs, max_nfev=1)
+        assert estimate.fit_success is False
+        assert np.isfinite(estimate.tau) and estimate.tau > 0
+
+    def test_estimate_tau_wrapper_returns_float(self, sample_ringdown_signal):
+        """Backward-compatible estimate_tau still returns a bare float."""
+        t, data, fs = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        tau = analyzer.estimate_tau(data, t, fs)
+        assert isinstance(tau, float)
+
+    def test_pipeline_reports_tau_est_fit_success(self, sample_ringdown_signal):
+        """analyze_array exposes tau_est_fit_success and folds it into confidence."""
+        t, data, fs = sample_ringdown_signal
+        analyzer = RingDownAnalyzer()
+        result = analyzer.analyze_array(t=t, data=data)
+        assert result["tau_est_fit_success"] is True
+
+        analyzer_failing = RingDownAnalyzer()
+        analyzer_failing.estimate_tau_with_status = lambda *args, **kwargs: TauEstimate(0.3, False)
+        result_failing = analyzer_failing.analyze_array(t=t, data=data)
+        assert result_failing["tau_est_fit_success"] is False
+        assert result_failing["tau_est_low_confidence"] is True
 
 
 class _FixedProfileEstimator:

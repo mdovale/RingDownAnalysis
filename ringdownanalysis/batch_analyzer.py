@@ -526,6 +526,7 @@ class BatchRingDownAnalyzer:
                     "tau_seed (s)": r.get("tau_seed"),
                     "tau_seed_method": r.get("tau_seed_method"),
                     "tau_est (s)": r["tau_est"],
+                    "tau_est_fit_success": r.get("tau_est_fit_success"),
                     "tau_nls (s)": r.get("tau_nls"),
                     "tau_dft (s)": r.get("tau_dft"),
                     "tau_est_low_confidence": r.get("tau_est_low_confidence"),

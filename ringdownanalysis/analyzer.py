@@ -29,6 +29,13 @@ from .q_profile import ProfileQEstimator
 logger = logging.getLogger(__name__)
 
 
+class TauEstimate(NamedTuple):
+    """Full-record tau estimate with an explicit fit-success flag."""
+
+    tau: float
+    fit_success: bool
+
+
 class NoiseEstimate(NamedTuple):
     """Noise and amplitude estimates for plug-in uncertainty calculations."""
 
@@ -356,7 +363,42 @@ class RingDownAnalyzer:
         Returns:
         --------
         float
-            Estimated tau value in seconds
+            Estimated tau value in seconds. On fit failure the (possibly
+            user-provided) seed is returned; use estimate_tau_with_status to
+            distinguish that case.
+        """
+        return self.estimate_tau_with_status(
+            data,
+            t,
+            fs,
+            initial_params=initial_params,
+            tau_init=tau_init,
+            max_nfev=max_nfev,
+            ftol=ftol,
+            xtol=xtol,
+            gtol=gtol,
+        ).tau
+
+    def estimate_tau_with_status(
+        self,
+        data: np.ndarray,
+        t: np.ndarray,
+        fs: float,
+        initial_params: tuple | None = None,
+        *,
+        tau_init: float | None = None,
+        max_nfev: int | None = None,
+        ftol: float | None = None,
+        xtol: float | None = None,
+        gtol: float | None = None,
+    ) -> TauEstimate:
+        """
+        Estimate tau from full data using NLS, reporting fit success explicitly.
+
+        Same fit as estimate_tau, but the returned TauEstimate carries
+        fit_success=False when the optimizer failed or the fitted tau failed
+        its sanity checks — in both cases the returned tau is the seed value,
+        which is otherwise indistinguishable from a genuine estimate.
         """
         N = len(data)
         t_norm = t - t[0]
@@ -429,7 +471,7 @@ class RingDownAnalyzer:
                             "t_max": float(t_norm[-1]),
                         },
                     )
-                return tau_init_fit
+                return TauEstimate(tau=float(tau_init_fit), fit_success=False)
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "tau_estimated",
@@ -440,7 +482,7 @@ class RingDownAnalyzer:
                         "nfev": res_tau.nfev,
                     },
                 )
-            return float(tau_est)
+            return TauEstimate(tau=float(tau_est), fit_success=True)
 
         if logger.isEnabledFor(logging.WARNING):
             logger.warning(
@@ -452,7 +494,7 @@ class RingDownAnalyzer:
                     "nfev": res_tau.nfev,
                 },
             )
-        return tau_init_fit
+        return TauEstimate(tau=float(tau_init_fit), fit_success=False)
 
     def crop_data_to_tau(
         self,
@@ -681,7 +723,7 @@ class RingDownAnalyzer:
         tau_seed_method = str(tau_initialization[1])
         tau_full_init, tau_full_lower, tau_full_upper = _sanitize_tau_guess(tau_seed, t_norm)
 
-        tau_est = self.estimate_tau(
+        tau_estimate = self.estimate_tau_with_status(
             data,
             t,
             fs,
@@ -692,6 +734,8 @@ class RingDownAnalyzer:
             xtol=xtol,
             gtol=gtol,
         )
+        tau_est = float(tau_estimate.tau)
+        tau_est_fit_success = bool(tau_estimate.fit_success)
 
         # Crop cascade guard: the coherent full-record tau fit can collapse to a
         # small value on decoherent data (frequency drift), which would silently
@@ -804,6 +848,7 @@ class RingDownAnalyzer:
             or tau_est_at_lower
             or tau_est_at_upper
             or tau_crop_source != "tau_est"
+            or not tau_est_fit_success
         )
         Q_pre_crop = float(np.pi * f_nls * tau_est) if np.isfinite(f_nls) else np.nan
         q_nls_assessment = _assess_q_estimate(
@@ -925,6 +970,7 @@ class RingDownAnalyzer:
             "tau_full_lower": tau_full_lower,
             "tau_full_upper": tau_full_upper,
             "tau_est": tau_est,
+            "tau_est_fit_success": tau_est_fit_success,
             "tau_est_at_lower_bound": tau_est_at_lower,
             "tau_est_at_upper_bound": tau_est_at_upper,
             "T_over_tau_est": T_over_tau_est,
@@ -1228,6 +1274,7 @@ class RingDownAnalyzer:
                             "T": result["T"],
                             "T_crop": result["T_crop"],
                             "tau_est": result["tau_est"],
+                            "tau_est_fit_success": result["tau_est_fit_success"],
                             "tau_est_low_confidence": result["tau_est_low_confidence"],
                             "tau_nls": result["tau_nls"],
                             "tau_dft": result["tau_dft"],
