@@ -114,19 +114,24 @@ def _select_q_for_overlay(result: dict, q_source: str) -> tuple[float | None, fl
         )
     else:
         field_map = {
-            "profile": ("Q_profile", "f_profile", "profile Q"),
-            "nls": ("Q_nls", "f_nls", "valid NLS Q"),
-            "dft": ("Q_dft", "f_dft", "valid DFT Q"),
-            "nls_raw": ("Q_nls_raw", "f_nls", "raw NLS Q"),
-            "dft_raw": ("Q_dft_raw", "f_dft", "raw DFT Q"),
-            "envelope": ("Q_envelope", "f_profile", "envelope Q"),
+            # "profile" falls back to the raw value so demoted (mismatching)
+            # profile fits can still be drawn — the overlay flags the mismatch.
+            "profile": (
+                ("Q_profile", "f_profile", "profile Q"),
+                ("Q_profile_raw", "f_profile", "raw profile Q"),
+            ),
+            "nls": (("Q_nls", "f_nls", "valid NLS Q"),),
+            "dft": (("Q_dft", "f_dft", "valid DFT Q"),),
+            "nls_raw": (("Q_nls_raw", "f_nls", "raw NLS Q"),),
+            "dft_raw": (("Q_dft_raw", "f_dft", "raw DFT Q"),),
+            "envelope": (("Q_envelope", "f_profile", "envelope Q"),),
         }
         if source not in field_map:
             raise ValueError(
                 "q_source must be one of 'best', 'profile', 'nls', 'dft', "
                 "'nls_raw', 'dft_raw', or 'envelope'"
             )
-        candidates = (field_map[source],)
+        candidates = field_map[source]
 
     fallback_f = result.get("f_profile") or result.get("f_nls") or result.get("f_dft")
     for q_field, f_field, label in candidates:
@@ -211,6 +216,22 @@ def plot_q_envelope_overlay(
         fit_style.update(fit_kwargs)
     if candidate_kwargs:
         candidate_style.update(candidate_kwargs)
+
+    # Honesty guard: a candidate Q that disagrees with the measured envelope
+    # slope is drawn dashed and labeled with the slope-mismatch factor, so it
+    # can never masquerade as an endorsed fit.
+    if (
+        q_value is not None
+        and diagnostic.candidate_agrees is False
+        and diagnostic.candidate_tau is not None
+        and diagnostic.log_amplitude_slope is not None
+        and diagnostic.log_amplitude_slope != 0.0
+    ):
+        candidate_slope = -1.0 / diagnostic.candidate_tau
+        slope_ratio = abs(candidate_slope / diagnostic.log_amplitude_slope)
+        mismatch_factor = max(slope_ratio, 1.0 / slope_ratio) if slope_ratio > 0 else np.inf
+        candidate_style["linestyle"] = "--"
+        candidate_style["label"] = f"{candidate_style['label']} (MISMATCH ×{mismatch_factor:.1f})"
 
     stride = max(1, int(np.ceil(len(t) / max_points)))
     center = float(np.median(data))
