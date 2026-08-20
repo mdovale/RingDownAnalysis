@@ -80,8 +80,8 @@ The current package default is `max_tau_multiplier=1.0` in `RingDownAnalyzer.ana
 Evidence:
 
 - `ringdownanalysis/analyzer.py`: `analyze_file(..., max_tau_multiplier=1.0)` and `analyze_array(..., max_tau_multiplier=1.0)`.
-- `notebooks/analysis_example.ipynb`: markdown says “Crop data to 3*tau” while code calls `analyzer.analyze_file(filepath)`.
-- `notebooks/batch_analysis_example.ipynb`: markdown says “Crop data to 3×tau” while the helper calls `analyzer.analyze_file(filepath, max_tau_multiplier=1.0)`.
+- `notebooks/0.2_drifting-resonators.ipynb`: markdown says “Crop data to 3*tau” while code calls `analyzer.analyze_file(filepath)`.
+- `notebooks/0.1_batch-analysis.ipynb`: markdown says “Crop data to 3×tau” while the helper calls `analyzer.analyze_file(filepath, max_tau_multiplier=1.0)`.
 - Both notebooks plot a `3×tau` boundary, not necessarily the actual `T_crop`.
 
 Impact:

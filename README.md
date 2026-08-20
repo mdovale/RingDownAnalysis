@@ -402,8 +402,8 @@ See `benchmarks/README.md` for detailed information on performance benchmarking 
 
 ### Notebooks (`notebooks/`)
 
-- **`analysis_example.ipynb`**: Interactive analysis examples
-- **`batch_analysis_example.ipynb`**: Batch analysis in notebook format
+- **`0.2_drifting-resonators.ipynb`**: Real-data analysis with drift and Q-selection workflow
+- **`0.1_batch-analysis.ipynb`**: Batch analysis in notebook format
 
 ## Key Results
 
