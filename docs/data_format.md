@@ -137,6 +137,9 @@ notebooks. One semantic pitfall:
   an absolute timestamp silently selects the wrong window. Select windows as
   offsets from release (`start_time=0.0` is the beginning of the record).
 
+`notebooks/0.5_odin-phasemeter-data.ipynb` walks through one such load end to
+end, including a numeric demonstration of the offset semantics above.
+
 ---
 
 ## Units Summary

@@ -85,6 +85,8 @@ df_display = pd.DataFrame(batch_analyzer.get_formatted_summary_table()['data'])
 ```
 
 See `examples/usage_example.py` and `examples/batch_analysis_example.py` for more complete examples.
+Notebook walkthroughs: `notebooks/0.4_frequency-estimation.ipynb` for the standalone
+estimators, `notebooks/0.0_quick-start.ipynb` for the full pipeline.
 
 #### Profile Q, Limits, and Raw Diagnostics
 
@@ -197,7 +199,8 @@ print(nl.q_at(100.0))                 # amplitude-matched local Q
 - **`start_time` offset semantics.** When loading Moku phasemeter data via
   `mokutools`, `start_time` is an *offset from the first sample of the file*,
   not an absolute timestamp. Windows selected with absolute times silently
-  select the wrong data.
+  select the wrong data. Worked example:
+  `notebooks/0.5_odin-phasemeter-data.ipynb`.
 
 #### Migration note: batch Q preference
 
@@ -303,6 +306,8 @@ print(f"DFT std: {results['stats']['dft']['std']:.6e} Hz")
 print(f"CRLB std: {results['crlb_std']:.6e} Hz")
 ```
 
+Walkthrough with interpretation: `notebooks/0.6_monte-carlo-crlb.ipynb`.
+
 ### Calculate CRLB
 
 ```python
@@ -402,10 +407,22 @@ See `benchmarks/README.md` for detailed information on performance benchmarking 
 
 ### Notebooks (`notebooks/`)
 
-- **`0.0_quick-start.ipynb`**: Synthetic quick start with `RingDownAnalyzer`
-- **`0.1_drifting-resonators.ipynb`**: Real-data analysis with drift and Q-selection workflow
-- **`0.2_batch-analysis.ipynb`**: Batch analysis in notebook format
-- **`0.3_profile-likelihood-q.ipynb`**: Profile-likelihood Q on synthetics (finite estimates, limits, window sensitivity)
+The `0.x` series is a tutorial ladder, in learning order:
+
+| Notebook | What it covers |
+| --- | --- |
+| **`0.0_quick-start.ipynb`** | Synthetic quick start: `RingDownAnalyzer.analyze_array()`, input formats, a first look at `Q_selected` |
+| **`0.1_drifting-resonators.ipynb`** | Real `.csv`/`.mat` records: drift and plateau diagnostics, why `Q_selected` prefers `Q_demod`, amplitude-dependent damping |
+| **`0.2_batch-analysis.ipynb`** | Many files with `BatchRingDownAnalyzer`: `q_preference="demod"`, consistency tables, plug-in uncertainty ratios |
+| **`0.3_profile-likelihood-q.ipynb`** | Profile-likelihood Q on synthetics: finite estimates, one-sided limits, window sensitivity |
+| **`0.4_frequency-estimation.ipynb`** | `NLSFrequencyEstimator` vs `DFTFrequencyEstimator` standalone: `estimate()`/`estimate_full()`, windows, `f_min`, accuracy vs cost |
+| **`0.5_odin-phasemeter-data.ipynb`** | Zipped Moku:Pro exports via `mokutools`: the `start_time` offset pitfall, channel choice, one capped window end to end |
+| **`0.6_monte-carlo-crlb.ipynb`** | Statistical foundations: `CRLBCalculator` bounds, `MonteCarloAnalyzer` efficiency, and how these differ from plug-in uncertainty on real records |
+
+Dated notebooks (`20260819_EDU_SegmentedDemod_Estimator_Demo.ipynb`,
+`20260818_EDU_PreVibe_vs_PostVibe_RingDown.ipynb`, and the other ODIN/EDU files) are
+investigation records rather than tutorials, and are linked from the notebooks above
+where relevant.
 
 ## Key Results
 
