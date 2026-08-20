@@ -24,6 +24,7 @@ FIGURES = \
 	freq_estimation_ringdown_v6_performance.pdf \
 	q_estimation_ringdown_v6_individual.pdf \
 	q_estimation_ringdown_v6_performance.pdf \
+	q_estimator_three_way_comparison.pdf \
 	crlb_freq_vs_tau_ratio.pdf \
 	crlb_freq_vs_snr.pdf \
 	crlb_q_vs_q.pdf \

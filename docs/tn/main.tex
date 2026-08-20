@@ -9,7 +9,7 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.3\baselineskip}
 
-\title{Frequency and Q-factor estimation of ring-down signals: nonlinear least squares and discrete Fourier transform methods}
+\title{Frequency and Q-factor estimation of ring-down signals: nonlinear least squares, profile likelihood, and discrete Fourier transform methods}
 \author{Miguel Dovale for the LASSO Team, mdovale@arizona.edu}
 \date{}
 
@@ -17,7 +17,7 @@
 \maketitle
 
 \begin{abstract}
-We analyze the accuracy of estimating the frequency and quality factor $Q$ of a decaying sinusoid from finite, noisy samples. The signal arises from ring-down measurements of a harmonic oscillator, where the amplitude decays exponentially. Two complementary approaches are presented: nonlinear least squares (NLS) with explicit ring-down model, and frequency-domain methods (DFT followed by peak location with Lorentzian fitting). We derive the Fisher information matrix explicitly for the ring-down case and compare estimator performance against the Cram\'er--Rao lower bound (CRLB). We provide a complete derivation of the CRLB for $Q$, showing that under the standard high-SNR, many-cycle approximation, frequency and decay time are asymptotically uncorrelated after marginalizing nuisance parameters.
+We analyze the accuracy of estimating the frequency and quality factor $Q$ of a decaying sinusoid from finite, noisy samples. The signal arises from ring-down measurements of a harmonic oscillator, where the amplitude decays exponentially. Three complementary approaches are presented: nonlinear least squares (NLS) with an explicit ring-down model, profile-likelihood inference for $Q$, and frequency-domain methods (DFT followed by peak location with Lorentzian fitting). We derive the Fisher information matrix explicitly for the ring-down case and compare estimator performance against the Cram\'er--Rao lower bound (CRLB). We provide a complete derivation of the CRLB for $Q$, showing that under the standard high-SNR, many-cycle approximation, frequency and decay time are asymptotically uncorrelated after marginalizing nuisance parameters.
 \end{abstract}
 
 \section{Problem formulation}
@@ -322,6 +322,7 @@ The dependence on observation time $T/\tau$ is shown in Fig.~\ref{fig:crlb-q-tau
 \end{figure}
 
 \section{Nonlinear least squares (NLS)}
+\label{sec:nls}
 
 Directly fitting the parametric ring-down model
 \begin{equation}
@@ -333,7 +334,34 @@ J = \sum_{n=0}^{N-1} \left[x_n - A_0 e^{-t_n/\tau}\cos(2\pi f t_n + \phi) - c\ri
 \end{equation}
 over parameters $(A_0,\phi,f,\tau,c)$ provides a maximum-likelihood estimator under Gaussian noise assumptions.
 
+\section{Profile-likelihood quality-factor estimator}
+\label{sec:profile-q}
+
+The raw NLS value $Q_{\mathrm{NLS}} = \pi \hat f \hat\tau$ is useful as a diagnostic, but it can be misleading when the record does not contain enough exponential decay to identify a finite decay time. In that case an optimizer can return a large finite $\hat\tau$ even though a broad range of larger $\tau$ values fits nearly as well. The profile-likelihood estimator treats $Q$ as the inference target and reports a finite estimate only when the likelihood-ratio confidence set closes on both sides of the optimum.
+
+For a fixed frequency estimate $\hat f$ and a candidate decay time $\tau$, write the model in separable form:
+\begin{equation}
+x_n = e^{-t_n/\tau}\left[a\cos(2\pi \hat f t_n) + b\sin(2\pi \hat f t_n)\right] + c + w_n.
+\end{equation}
+For each $\tau$ on a log-spaced grid, the nuisance parameters $(a,b,c)$ are solved exactly by linear least squares, and the residual sum of squares $\mathrm{RSS}(\tau)$ is recorded. This variable-projection step avoids repeatedly fitting all parameters nonlinearly.
+
+The profiled objective is converted to the one-parameter likelihood-ratio statistic
+\begin{equation}
+\Delta(\tau) = \nu\log\left(\frac{\mathrm{RSS}(\tau)}{\mathrm{RSS}_{\min}}\right),
+\end{equation}
+where $\nu$ is the residual degrees of freedom. The approximate 95\% confidence set is the range where
+\begin{equation}
+\Delta(\tau) \le \chi^2_{1,0.95} \simeq 3.841.
+\end{equation}
+Since the profiled frequency is fixed, the mapping to quality factor is direct:
+\begin{equation}
+Q = \pi \hat f \tau.
+\end{equation}
+
+The reported status is therefore part of the estimator output. If the profile crosses the 95\% threshold on both sides of the minimum, the result is a finite $Q_{\mathrm{profile}}$ with a two-sided confidence interval. If the profile is open toward high $Q$, the correct output is a lower limit, not a finite $Q$ estimate. This distinction is important for high-$Q$ records with $T/\tau \ll 1$.
+
 \section{Frequency-domain methods (DFT)}
+\label{sec:dft}
 
 \subsection{DFT peak location}
 
@@ -379,22 +407,23 @@ The above limitations ensure that DFT methods remain statistically suboptimal re
 
 \section{Numerical analysis}
 
-We provide a Python script that implements NLS and DFT methods for ring-down signals and performs Monte Carlo simulations. The script generates a time series sampled at $f_s = \SI{100}{Hz}$ with $N = 10^6$ samples (observation time $T = \SI{10000}{s}$) containing a ring-down signal at $f_0 = \SI{5}{Hz}$ with quality factor $Q$ and additive white Gaussian noise.
+We provide a Python script that implements NLS, DFT, and profile-likelihood methods for ring-down signals. The numerical analysis uses a time series sampled at $f_s = \SI{100}{Hz}$ with $N = 10^6$ samples (observation time $T = \SI{10000}{s}$) containing a ring-down signal at $f_0 = \SI{5}{Hz}$ with quality factor $Q = 10^4$ and additive white Gaussian noise with initial $\mathrm{SNR} = \SI{60}{dB}$.
 
 For each Monte Carlo trial, the script:
 \begin{enumerate}
 \item Generates an independent realization with random noise and initial phase $\phi_0 \sim \mathcal{U}(-\pi, \pi)$.
 \item Calculates the CRLB from the explicit Fisher information matrix derivation for both frequency and quality factor $Q$.
 \item Estimates frequency using nonlinear least squares and windowed DFT peak fitting with Lorentzian function.
-\item Estimates quality factor $Q$ using both NLS and DFT+NLS sequential methods:
+\item Estimates quality factor $Q$ using three methods in the dedicated comparison:
   \begin{itemize}
-  \item \textbf{NLS}: Jointly estimates frequency and decay time, then computes $Q = \pi f \tau$.
-  \item \textbf{DFT+NLS two-step approach}: (1) estimates frequency via DFT peak fitting with Lorentzian function, (2) estimates decay time via NLS with frequency fixed to the DFT result, then $Q = \pi f \tau$.
+  \item \textbf{Profile likelihood}: profiles $\tau$ with separable least squares at fixed frequency, maps the profiled interval to $Q = \pi \hat f\tau$, and reports a finite estimate when the interval closes.
+  \item \textbf{NLS}: jointly estimates frequency and decay time, then computes the raw point estimate $Q_{\mathrm{NLS}} = \pi f \tau$.
+  \item \textbf{DFT+NLS}: estimates frequency via DFT peak fitting with a Lorentzian function, estimates decay time with frequency fixed to the DFT result, then computes $Q_{\mathrm{DFT}} = \pi f \tau$.
   \end{itemize}
-\item Computes error statistics: mean bias, standard deviation, and root-mean-square error for both frequency and $Q$ estimates.
+\item Computes error statistics: mean bias, standard deviation, root-mean-square error, and empirical profile-interval diagnostics.
 \end{enumerate}
 
-The script produces figures comparing the performance of the estimation methods for ring-down signals. Frequency estimation results are shown in Figs.~\ref{fig:individual-v6}--\ref{fig:performance-v6}, and quality factor estimation results are shown in Figs.~\ref{fig:q-individual-v6}--\ref{fig:q-performance-v6}.
+Frequency estimation results are shown in Figs.~\ref{fig:individual-v6}--\ref{fig:performance-v6}, raw quality-factor point-estimate diagnostics from the Monte Carlo are shown in Figs.~\ref{fig:q-individual-v6}--\ref{fig:q-performance-v6}, and the three-way $Q$ estimator comparison is shown in Fig.~\ref{fig:q-three-way-comparison}.
 
 \begin{figure}[htbp]
 \centering
@@ -419,38 +448,46 @@ The script produces figures comparing the performance of the estimation methods 
 
 \subsection{Quality factor estimation}
 
-The quality factor $Q$ is estimated using two complementary approaches, mirroring the frequency estimation methods:
+The quality factor $Q$ is now reported using the profile-likelihood estimator in Sec.~\ref{sec:profile-q}. The raw NLS and DFT+NLS values remain useful diagnostics and are retained in the Monte Carlo comparison:
 
 \begin{itemize}
-\item \textbf{NLS method}: Jointly estimates frequency $f$ and decay time $\tau$ using nonlinear least squares, then computes $Q = \pi f \tau$. This approach leverages the explicit ring-down model and provides statistically efficient estimates.
-\item \textbf{DFT+NLS hybrid method}: Uses a two-step hybrid approach:
+\item \textbf{Profile-likelihood method}: Profiles decay time $\tau$ with variable projection, maps the profiled interval to $Q = \pi \hat f \tau$, and reports $Q_{\mathrm{profile}}$ only when the 95\% interval closes on both sides. For open profiles, it reports a one-sided lower or upper limit.
+\item \textbf{NLS diagnostic}: Jointly estimates frequency $f$ and decay time $\tau$ using nonlinear least squares, then computes $Q_{\mathrm{NLS}} = \pi f \tau$. This point estimate is efficient when the decay is identifiable, but should not be quoted as a finite measurement if the profile is open.
+\item \textbf{DFT+NLS diagnostic}: Uses a two-step hybrid approach:
   \begin{enumerate}
   \item \textbf{Step 1}: Estimate frequency $f$ via DFT peak fitting with Lorentzian function (as described in Sec.~\ref{sec:dft}).
   \item \textbf{Step 2}: Estimate decay time $\tau$ using NLS with the frequency fixed to the DFT result from Step 1.
-  \item \textbf{Step 3}: Compute $Q = \pi f \tau$ using the DFT frequency and NLS decay time estimates.
+  \item \textbf{Step 3}: Compute $Q_{\mathrm{DFT}} = \pi f \tau$ using the DFT frequency and NLS decay time estimates.
   \end{enumerate}
-  This hybrid approach combines the computational efficiency of DFT frequency estimation with the accuracy of NLS decay time estimation, providing a practical alternative to pure NLS for Q estimation.
+  This hybrid approach combines the computational efficiency of DFT frequency estimation with the accuracy of NLS decay time estimation, but it inherits the same finite-$Q$ identifiability caveat.
 \end{itemize}
 
-The CRLB for $Q$ estimation is calculated from the explicit Fisher information matrix derivation in Sec.~\ref{sec:crlb-scaling}, accounting for the covariance between frequency and decay time estimates (see Eq.~\eqref{eq:crlb-Q-final}).
+The CRLB for $Q$ estimation is calculated from the explicit Fisher information matrix derivation in Sec.~\ref{sec:crlb-scaling}, accounting for the covariance between frequency and decay time estimates (see Eq.~\eqref{eq:crlb-Q-final}). The CRLB is a local small-error bound; the profile status is the practical guard against reporting a finite $Q$ when the experiment only supports a limit.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics{q_estimator_three_way_comparison.pdf}
+\caption{Three-way comparison of quality-factor estimators for the example parameter set: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples, initial $\text{SNR} = \SI{60}{dB}$, $Q = 10^4$, and $\tau = \SI{636.6}{s}$. The repeated-trial comparison uses 20 trials because the profile-likelihood calculation profiles 81 decay-time values over the full record. In this regime, profile likelihood closes in all trials and has essentially the same point-estimate precision as raw NLS, while DFT+NLS is similar but slightly less efficient. The lower-right panel reports the finite-estimate rate and the empirical profile-interval diagnostics for the same trials.}
+\label{fig:q-three-way-comparison}
+\end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics{q_estimation_ringdown_v6_individual.pdf}
-\caption{Error distributions for NLS and DFT+NLS hybrid quality factor ($Q$) estimation methods applied to ring-down signals. Each panel shows the histogram of $Q$ estimation errors from 100 Monte Carlo trials. The vertical dashed lines indicate the CRLB standard deviation calculated from the explicit Fisher information matrix. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples ($T = \SI{10000}{s}$), initial $\text{SNR} = \SI{60}{dB}$, quality factor $Q = 10^4$ (decay time $\tau = \SI{636.6}{s}$). The NLS method (top) achieves standard deviations close to the Q-CRLB, demonstrating efficient estimation of the quality factor through joint estimation of frequency and decay time. The DFT+NLS hybrid method (bottom) uses a two-step approach: (1) DFT frequency estimation via Lorentzian peak fitting, (2) NLS decay time estimation with frequency fixed to the DFT result, then (3) computes $Q = \pi f \tau$. This hybrid approach combines the computational efficiency of DFT frequency estimation with the accuracy of NLS decay time estimation, providing a practical alternative that achieves reasonable accuracy.}
+\caption{Error distributions for raw NLS and DFT+NLS hybrid quality factor ($Q$) point-estimate diagnostics applied to ring-down signals. Each panel shows the histogram of $Q$ estimation errors from 100 Monte Carlo trials. The vertical dashed lines indicate the CRLB standard deviation calculated from the explicit Fisher information matrix. Parameters: $f_0 = \SI{5}{Hz}$, $f_s = \SI{100}{Hz}$, $N = 10^6$ samples ($T = \SI{10000}{s}$), initial $\text{SNR} = \SI{60}{dB}$, quality factor $Q = 10^4$ (decay time $\tau = \SI{636.6}{s}$). The NLS diagnostic (top) achieves standard deviations close to the Q-CRLB when the decay is identifiable. The DFT+NLS hybrid diagnostic (bottom) uses a two-step approach: (1) DFT frequency estimation via Lorentzian peak fitting, (2) NLS decay time estimation with frequency fixed to the DFT result, then (3) computes $Q = \pi f \tau$.}
 \label{fig:q-individual-v6}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics{q_estimation_ringdown_v6_performance.pdf}
-\caption{Performance metrics comparison for quality factor ($Q$) estimation. Left panel: Standard deviation of $Q$ estimation errors for NLS and DFT+NLS hybrid methods, plotted on a logarithmic scale. The horizontal dashed line indicates the Q-CRLB. Right panel: Statistical efficiency $\eta = \sigma_{\text{CRLB}}/\sigma_{\text{method}}$, where $\eta = 1$ corresponds to achieving the CRLB. The NLS method achieves efficiency near unity for $Q$ estimation, demonstrating that the joint estimation of frequency and decay time provides statistically efficient quality factor estimates. The DFT+NLS hybrid method, while less efficient than NLS, provides a computationally efficient alternative that leverages the speed of DFT frequency estimation (Step 1) combined with NLS decay time estimation (Step 2) to compute $Q = \pi f \tau$ (Step 3).}
+\caption{Performance metrics comparison for raw quality factor ($Q$) point-estimate diagnostics. Left panel: Standard deviation of $Q$ estimation errors for NLS and DFT+NLS hybrid diagnostics, plotted on a logarithmic scale. The horizontal dashed line indicates the Q-CRLB. Right panel: Statistical efficiency $\eta = \sigma_{\text{CRLB}}/\sigma_{\text{method}}$, where $\eta = 1$ corresponds to achieving the CRLB. The NLS diagnostic achieves efficiency near unity when the decay is identifiable. The DFT+NLS hybrid diagnostic, while less efficient than NLS, provides a computationally efficient alternative that leverages DFT frequency estimation followed by NLS decay-time estimation.}
 \label{fig:q-performance-v6}
 \end{figure}
 
 \section{Comparison and conclusions}
 
-Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation, achieving the CRLB derived from the Fisher information matrix. The DFT peak fitting method with Lorentzian function and rectangular window is computationally efficient, but suffers from statistical inefficiency due to information loss.
+Nonlinear least squares with explicit ring-down model provides statistically efficient frequency estimation, achieving the CRLB derived from the Fisher information matrix. For the example $Q = 10^4$ data set, the profile-likelihood estimator closes in all comparison trials and has the same finite-$Q$ precision as the corresponding NLS point estimate, while also providing an interval-based reporting rule. The DFT peak fitting method with Lorentzian function and rectangular window is computationally efficient, but suffers from statistical inefficiency due to information loss.
 
 The exponential decay reduces the effective observation time and SNR, degrading estimation performance compared to constant-amplitude signals. The degradation depends on the ratio $T/\tau$: for $T \ll \tau$, performance is similar to a constant-amplitude signal, while for $T \gtrsim \tau$, later samples contribute little information due to reduced amplitude.
 
