@@ -18,8 +18,9 @@ from scipy.signal import detrend
 
 logger = logging.getLogger(__name__)
 
-# Default maximum file size (1 GB) to prevent memory exhaustion
-DEFAULT_MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024
+# Optional cap for callers that want to enforce a maximum file size (bytes).
+# RingDownDataLoader.load() does not apply a limit unless this is passed explicitly.
+DEFAULT_MAX_FILE_SIZE_BYTES: int | None = None
 
 
 def _check_file_size(filepath: str, max_size_bytes: int) -> None:
@@ -324,7 +325,8 @@ class RingDownDataLoader:
         filepath : str
             Path to data file
         max_file_size_bytes : int, optional
-            Maximum allowed file size in bytes. Default 1 GB. Set to None to disable.
+            Maximum allowed file size in bytes. Default None (no limit). Pass an
+            integer to reject files larger than that threshold.
 
         Returns:
         --------
