@@ -47,6 +47,7 @@ from .plots import (
 )
 from .q_envelope import QEnvelopeDiagnostic, q_envelope_diagnostic
 from .q_profile import ProfileQEstimator, QProfileResult
+from .selection import QSelection, select_q_estimate
 from .signal import (
     RingDownSignal,
     generate_driven_plateau,
@@ -104,6 +105,8 @@ __all__ = [
     "SegmentedDemodResult",
     "NonlinearDampingResult",
     "fit_nonlinear_damping",
+    "QSelection",
+    "select_q_estimate",
     "CRLBCalculator",
     "RingDownDataLoader",
     "RingDownAnalyzer",

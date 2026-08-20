@@ -26,6 +26,7 @@ from .estimators import (
 )
 from .q_envelope import q_envelope_diagnostic
 from .q_profile import ProfileQEstimator
+from .selection import select_q_estimate
 
 logger = logging.getLogger(__name__)
 
@@ -1021,7 +1022,7 @@ class RingDownAnalyzer:
             and result_nls.success
         )
 
-        return {
+        result = {
             "t": t,
             "data": data,
             "V2": None,
@@ -1169,6 +1170,22 @@ class RingDownAnalyzer:
             "T": t[-1],
             "T_crop": t_crop[-1] if len(t_crop) > 0 else 0,
         }
+
+        # P3 estimator selection: regime classification plus cross-estimator
+        # agreement as a hard condition for a valid user-facing Q.
+        selection = select_q_estimate(result)
+        result.update(
+            {
+                "Q_selected": selection.Q,
+                "Q_selected_source": selection.source,
+                "Q_selected_regime": selection.regime,
+                "Q_selected_valid": selection.valid,
+                "Q_selected_status": selection.status,
+                "Q_selected_reasons": selection.reasons,
+                "Q_selected_agreement_ratio": selection.agreement_ratio,
+            }
+        )
+        return result
 
     def analyze_array(
         self,
