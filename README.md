@@ -403,8 +403,8 @@ See `benchmarks/README.md` for detailed information on performance benchmarking 
 ### Notebooks (`notebooks/`)
 
 - **`0.0_quick-start.ipynb`**: Synthetic quick start with `RingDownAnalyzer`
-- **`0.1_batch-analysis.ipynb`**: Batch analysis in notebook format
-- **`0.2_drifting-resonators.ipynb`**: Real-data analysis with drift and Q-selection workflow
+- **`0.1_drifting-resonators.ipynb`**: Real-data analysis with drift and Q-selection workflow
+- **`0.2_batch-analysis.ipynb`**: Batch analysis in notebook format
 - **`0.3_profile-likelihood-q.ipynb`**: Profile-likelihood Q on synthetics (finite estimates, limits, window sensitivity)
 
 ## Key Results
