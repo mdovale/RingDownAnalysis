@@ -619,3 +619,70 @@ class TestAnalyzerEdgeCases:
             assert result is not None
         finally:
             Path(filepath).unlink(missing_ok=True)
+
+
+class TestDemodPipelineIntegration:
+    """P1: segmented-demod fields in the pipeline result and the drift gate."""
+
+    F0 = 7.6699
+    FS = 30.0
+    TAU = 370.0
+    Q_TRUE = np.pi * F0 * TAU
+
+    @classmethod
+    def _record(cls, **kwargs):
+        from ringdownanalysis.signal import generate_pathological_ringdown
+
+        return generate_pathological_ringdown(
+            f0=cls.F0,
+            fs=cls.FS,
+            duration=1080.0,
+            a0=600.0,
+            tau=cls.TAU,
+            sigma_white=1.5,
+            rng=np.random.default_rng(20260818),
+            **kwargs,
+        )
+
+    def test_ideal_record_reports_demod_fields_and_no_gate(self):
+        t, data = self._record()
+        result = RingDownAnalyzer().analyze_array(t=t, data=data)
+
+        assert result["Q_demod_valid"] is True
+        assert result["Q_demod"] == pytest.approx(self.Q_TRUE, rel=0.01)
+        assert result["tau_demod"] == pytest.approx(self.TAU, rel=0.01)
+        assert result["f_demod"] == pytest.approx(self.F0, abs=1e-3)
+        low, high = result["Q_demod_ci95"]
+        assert low < result["Q_demod"] < high
+        assert result["Q_demod_n_segments"] >= 90
+        # No significant drift: the coherence gate must not fire on a
+        # coherent record, and coherent estimators keep their own status.
+        assert result["coherence_gate_fired"] is False
+        assert "coherence_gate_drift" not in result["Q_profile_reasons"]
+
+    def test_drift_gate_invalidates_coherent_estimators(self):
+        t, data = self._record(linear_drift=1e-5)
+        result = RingDownAnalyzer().analyze_array(t=t, data=data)
+
+        # Demod is immune to drift (E2c-class assert).
+        assert result["Q_demod"] == pytest.approx(self.Q_TRUE, rel=0.02)
+        assert result["coherence_ratio"] > 0.01
+        assert result["coherence_gate_fired"] is True
+        # No coherent estimator may report a valid finite Q.
+        assert result["Q_nls_valid"] is False
+        assert result["Q_nls"] is None
+        assert "nls_coherence_gate_drift" in result["Q_nls_reasons"]
+        assert result["Q_dft_valid"] is False
+        assert result["Q_dft"] is None
+        assert "dft_coherence_gate_drift" in result["Q_dft_reasons"]
+        assert result["Q_profile_valid"] is False
+        assert result["Q_profile"] is None
+
+    def test_short_record_demod_fields_are_none_but_present(self):
+        t = np.arange(0.0, 2.0, 1.0 / 1000.0)
+        data = np.exp(-t / 0.5) * np.cos(2.0 * np.pi * 50.0 * t)
+        result = RingDownAnalyzer().analyze_array(t=t, data=data)
+
+        assert "Q_demod" in result
+        assert result["Q_demod_status"] in ("valid", "warning", "invalid", "plateau_dominated")
+        assert result["coherence_gate_fired"] in (True, False)

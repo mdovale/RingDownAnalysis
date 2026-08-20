@@ -14,6 +14,7 @@ from scipy.optimize import least_squares
 
 from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
+from .demod import COHERENCE_RATIO_THRESHOLD, SegmentedDemodEstimator
 from .estimators import (
     DFTFrequencyEstimator,
     NLSFrequencyEstimator,
@@ -249,6 +250,27 @@ def _assess_q_estimate(
     )
 
 
+def _gate_coherent_assessment(assessment: QAssessment, method: str) -> QAssessment:
+    """
+    Demote a coherent Q assessment when the drift gate fires.
+
+    Coherent estimators (NLS/DFT) assume a phase-coherent tone; when the
+    measured frequency drift satisfies |df| * tau > COHERENCE_RATIO_THRESHOLD
+    their Q can be biased by factors of 2-4 while the fit itself converges, so
+    the value must not be reported as valid.
+    """
+    reason = f"{method}_coherence_gate_drift"
+    status = assessment.status if assessment.status == "invalid" else "warning"
+    return QAssessment(
+        value=None,
+        raw=assessment.raw,
+        valid=False,
+        status=status,
+        reasons=[*assessment.reasons, reason],
+        raw_to_pre_crop_ratio=assessment.raw_to_pre_crop_ratio,
+    )
+
+
 def _validate_uniform_timebase(
     t: np.ndarray,
     *,
@@ -309,6 +331,7 @@ class RingDownAnalyzer:
         nls_estimator: NLSFrequencyEstimator | None = None,
         dft_estimator: DFTFrequencyEstimator | None = None,
         q_profile_estimator: ProfileQEstimator | None = None,
+        demod_estimator: SegmentedDemodEstimator | None = None,
     ):
         """
         Initialize analyzer.
@@ -321,10 +344,14 @@ class RingDownAnalyzer:
             DFT frequency estimator. If None, creates default (rectangular window).
         q_profile_estimator : ProfileQEstimator, optional
             Profile-likelihood Q estimator. If None, creates default.
+        demod_estimator : SegmentedDemodEstimator, optional
+            Incoherent segmented-demodulation Q estimator. If None, creates
+            default.
         """
         self.nls_estimator = nls_estimator or NLSFrequencyEstimator(tau_known=None)
         self.dft_estimator = dft_estimator or DFTFrequencyEstimator(window="rect")
         self.q_profile_estimator = q_profile_estimator or ProfileQEstimator()
+        self.demod_estimator = demod_estimator or SegmentedDemodEstimator()
         self.crlb_calc = CRLBCalculator()
 
     def estimate_tau(
@@ -777,6 +804,28 @@ class RingDownAnalyzer:
                         },
                     )
 
+        # Incoherent segmented-demodulation estimate on the full record. It
+        # performs its own decay-region selection, so it must see the
+        # uncropped data; it also measures the frequency drift that gates the
+        # coherent estimators below.
+        demod_result = self.demod_estimator.estimate(t, data, fs, f_init=f0_init_full)
+        coherence_ratio = demod_result.coherence_ratio
+        # Gate on the 2-sigma lower bound so drift-measurement noise cannot
+        # fire the gate on a genuinely coherent record.
+        coherence_gate_fired = bool(
+            demod_result.coherence_ratio_lower is not None
+            and demod_result.coherence_ratio_lower > COHERENCE_RATIO_THRESHOLD
+        )
+        if coherence_gate_fired and logger.isEnabledFor(logging.WARNING):
+            logger.warning(
+                "coherence_gate_fired",
+                extra={
+                    "event": "coherence_gate_fired",
+                    "coherence_ratio": coherence_ratio,
+                    "drift_hz": demod_result.drift_hz,
+                },
+            )
+
         t_crop, data_cropped = self.crop_data_to_tau(
             t,
             data,
@@ -875,6 +924,13 @@ class RingDownAnalyzer:
             q_pre_crop=Q_pre_crop,
             t_fit=t_crop,
         )
+        # Drift gate: the measured frequency drift makes globally
+        # phase-coherent fits untrustworthy regardless of their own
+        # convergence diagnostics.
+        if coherence_gate_fired:
+            q_nls_assessment = _gate_coherent_assessment(q_nls_assessment, "nls")
+            q_dft_assessment = _gate_coherent_assessment(q_dft_assessment, "dft")
+
         profile_f_init = f_nls if np.isfinite(f_nls) and f_nls > 0 else f_dft
         q_envelope_seed = q_envelope_diagnostic(t, data, profile_f_init)
         if q_envelope_seed.valid and q_envelope_seed.tau is not None:
@@ -926,6 +982,14 @@ class RingDownAnalyzer:
                         "slope_mismatch": q_envelope.candidate_slope_mismatch,
                     },
                 )
+        if coherence_gate_fired and q_profile.valid:
+            q_profile = dataclasses.replace(
+                q_profile,
+                Q=None,
+                valid=False,
+                status="warning",
+                reasons=[*q_profile.reasons, "coherence_gate_drift"],
+            )
         if q_nls_assessment.valid and tau_nls is not None:
             tau_model = tau_nls
         elif q_dft_assessment.valid and tau_dft is not None:
@@ -1026,6 +1090,30 @@ class RingDownAnalyzer:
             "Q_profile_tau_grid": q_profile.profile_tau,
             "Q_profile_q_grid": q_profile.profile_q,
             "Q_profile_delta": q_profile.profile_delta,
+            "Q_demod": demod_result.Q,
+            "tau_demod": demod_result.tau,
+            "f_demod": demod_result.f_mean,
+            "Q_demod_ci95": demod_result.Q_ci95,
+            "Q_demod_valid": demod_result.valid,
+            "Q_demod_status": demod_result.status,
+            "Q_demod_reasons": demod_result.reasons,
+            "Q_demod_method": demod_result.method,
+            "Q_demod_plateau_amplitude": demod_result.plateau_amplitude,
+            "Q_demod_plateau_detected": demod_result.plateau_detected,
+            "Q_demod_drift_hz": demod_result.drift_hz,
+            "Q_demod_drift_hz_stderr": demod_result.drift_hz_stderr,
+            "Q_demod_f_pull_per_efold": demod_result.f_pull_per_efold,
+            "Q_demod_vs_amplitude": demod_result.q_vs_amplitude,
+            "Q_demod_n_segments": demod_result.n_segments,
+            "Q_demod_seg_duration": demod_result.seg_duration,
+            "Q_demod_t_mid": demod_result.t_mid,
+            "Q_demod_f_seg": demod_result.f_seg,
+            "Q_demod_amplitude": demod_result.amplitude,
+            "Q_demod_decay_mask": demod_result.decay_mask,
+            "Q_demod_result": demod_result,
+            "coherence_ratio": coherence_ratio,
+            "coherence_ratio_lower": demod_result.coherence_ratio_lower,
+            "coherence_gate_fired": coherence_gate_fired,
             "tau_envelope": q_envelope.tau,
             "Q_envelope": q_envelope.Q,
             "Q_envelope_valid": q_envelope.valid,

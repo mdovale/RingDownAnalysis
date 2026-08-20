@@ -77,7 +77,12 @@ class SegmentedDemodResult:
     plateau_amplitude: float | None
     plateau_detected: bool
     drift_hz: float | None
+    drift_hz_stderr: float | None
     coherence_ratio: float | None
+    #: 2-sigma lower bound on coherence_ratio; use this to gate coherent
+    #: estimators so that drift-measurement noise cannot fire the gate on a
+    #: genuinely coherent record.
+    coherence_ratio_lower: float | None
     # Amplitude-resolved outputs
     q_vs_amplitude: list[AmplitudeBandQ]
     f_pull_per_efold: float | None
@@ -109,7 +114,9 @@ def _empty_result(status: str, reasons: list[str], *, seg_duration: float = 0.0,
         plateau_amplitude=None,
         plateau_detected=False,
         drift_hz=None,
+        drift_hz_stderr=None,
         coherence_ratio=None,
+        coherence_ratio_lower=None,
         q_vs_amplitude=[],
         f_pull_per_efold=None,
         log_slope=None,
@@ -567,7 +574,9 @@ class SegmentedDemodEstimator:
                 plateau_amplitude=floor,
                 plateau_detected=plateau_detected,
                 drift_hz=None,
+                drift_hz_stderr=None,
                 coherence_ratio=None,
+                coherence_ratio_lower=None,
                 q_vs_amplitude=[],
                 f_pull_per_efold=None,
                 log_slope=None,
@@ -638,9 +647,22 @@ class SegmentedDemodEstimator:
         q_value = float(np.pi * f_mean * tau)
 
         # Frequency drift over the decay region and the coherence gate.
-        drift_slope = float(np.polyfit(t_fit, f_seg[decay_mask], 1)[0])
-        drift_hz = float(drift_slope * (t_fit[-1] - t_fit[0]))
+        f_decay = f_seg[decay_mask]
+        drift_slope, drift_intercept = np.polyfit(t_fit, f_decay, 1)
+        decay_span = float(t_fit[-1] - t_fit[0])
+        drift_hz = float(drift_slope * decay_span)
+        f_resid = f_decay - (drift_slope * t_fit + drift_intercept)
+        drift_dof = n_decay - 2
+        if drift_dof > 0 and sxx > 0:
+            drift_slope_stderr = float(np.sqrt(np.sum(f_resid**2) / drift_dof / sxx))
+            drift_hz_stderr = float(drift_slope_stderr * decay_span)
+        else:
+            drift_hz_stderr = None
         coherence_ratio = float(abs(drift_hz) * tau)
+        if drift_hz_stderr is not None:
+            coherence_ratio_lower = float(max(0.0, abs(drift_hz) - 2.0 * drift_hz_stderr) * tau)
+        else:
+            coherence_ratio_lower = None
 
         # Frequency-pull coefficient (Hz per amplitude e-fold).
         log_amp_raw = np.log(amplitude[decay_mask])
@@ -662,7 +684,6 @@ class SegmentedDemodEstimator:
 
         reasons: list[str] = []
         status = "valid"
-        decay_span = float(t_fit[-1] - t_fit[0])
         if decay_span < tau:
             status = "warning"
             reasons.append("demod_decay_window_shorter_than_tau")
@@ -700,7 +721,9 @@ class SegmentedDemodEstimator:
             plateau_amplitude=floor,
             plateau_detected=plateau_detected,
             drift_hz=drift_hz,
+            drift_hz_stderr=drift_hz_stderr,
             coherence_ratio=coherence_ratio,
+            coherence_ratio_lower=coherence_ratio_lower,
             q_vs_amplitude=q_vs_amplitude,
             f_pull_per_efold=f_pull_per_efold,
             log_slope=slope,
