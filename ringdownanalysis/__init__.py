@@ -41,7 +41,11 @@ from .plots import (
 )
 from .q_envelope import QEnvelopeDiagnostic, q_envelope_diagnostic
 from .q_profile import ProfileQEstimator, QProfileResult
-from .signal import RingDownSignal
+from .signal import (
+    RingDownSignal,
+    generate_driven_plateau,
+    generate_pathological_ringdown,
+)
 
 # Configure package logger
 _logger = logging.getLogger(__name__)
@@ -102,6 +106,9 @@ __all__ = [
     "estimate_freq_dft",
     "estimate_freq_dft_optimized",
     "monte_carlo_analysis",
+    # Synthetic pathology generators
+    "generate_driven_plateau",
+    "generate_pathological_ringdown",
     # Plotting functions
     "plot_individual_results",
     "plot_aggregate_results",

@@ -5,7 +5,11 @@ Unit tests for RingDownSignal class.
 import numpy as np
 import pytest
 
-from ringdownanalysis.signal import RingDownSignal
+from ringdownanalysis.signal import (
+    RingDownSignal,
+    generate_driven_plateau,
+    generate_pathological_ringdown,
+)
 
 
 class TestRingDownSignal:
@@ -94,3 +98,109 @@ class TestRingDownSignal:
         early_std = np.std(x[:100])
         late_std = np.std(x[-100:])
         assert late_std < early_std  # Should decay
+
+
+class TestGenerateDrivenPlateau:
+    """AR(2) driven-plateau fixture generator."""
+
+    def test_plateau_rms_and_tone(self):
+        """Plateau has the requested RMS and is narrowband at f0."""
+        fs, f0, tau = 100.0, 7.67, 300.0
+        n = 60_000
+        rng = np.random.default_rng(20260818)
+        x = generate_driven_plateau(n, fs, f0, tau, rms_target=10.0, rng=rng)
+        assert np.std(x[n // 2 :]) == pytest.approx(10.0, rel=1e-6)
+        spec = np.abs(np.fft.rfft(x))
+        freqs = np.fft.rfftfreq(n, 1.0 / fs)
+        f_peak = freqs[np.argmax(spec[1:]) + 1]
+        assert f_peak == pytest.approx(f0, abs=0.05)
+
+    def test_deterministic_with_seed(self):
+        """Same seed gives the same plateau realization."""
+        a = generate_driven_plateau(5000, 100.0, 7.67, 300.0, 5.0, np.random.default_rng(7))
+        b = generate_driven_plateau(5000, 100.0, 7.67, 300.0, 5.0, np.random.default_rng(7))
+        assert np.array_equal(a, b)
+
+
+class TestGeneratePathologicalRingdown:
+    """Controlled-pathology ring-down generator (investigation fixtures)."""
+
+    COMMON = {"f0": 7.6699, "fs": 30.0, "duration": 600.0, "a0": 600.0, "tau": 200.0}
+
+    def test_ideal_case_matches_exponential(self):
+        """With no pathologies the envelope is a clean exponential at f0."""
+        t, x = generate_pathological_ringdown(**self.COMMON, rng=np.random.default_rng(1))
+        assert len(t) == len(x) == int(600.0 * 30.0)
+        expected = 600.0 * np.exp(-t / 200.0)
+        assert np.all(np.abs(x) <= expected * (1 + 1e-9) + 1e-9)
+        # Peaks reach the envelope somewhere
+        assert np.max(np.abs(x[:100]) / expected[:100]) > 0.9
+
+    def test_linear_drift_changes_instantaneous_frequency(self):
+        """Linear drift shifts the late-record tone relative to the early one."""
+        drift = 1e-4  # Hz/s -> 0.06 Hz over the record
+        t, x = generate_pathological_ringdown(
+            **{**self.COMMON, "tau": 1e9},  # no decay, isolate frequency behavior
+            linear_drift=drift,
+            rng=np.random.default_rng(2),
+        )
+        n = len(x)
+
+        def peak_freq(seg):
+            spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg)), n=8 * len(seg)))
+            freqs = np.fft.rfftfreq(8 * len(seg), 1.0 / 30.0)
+            return freqs[np.argmax(spec[1:]) + 1]
+
+        f_early = peak_freq(x[: n // 4])
+        f_late = peak_freq(x[-n // 4 :])
+        expected_shift = drift * 600.0 * 0.75
+        assert f_late - f_early == pytest.approx(expected_shift, rel=0.2)
+
+    def test_f_trajectory_overrides_drift_terms(self):
+        """An explicit f(t) trajectory is honored (interpolated onto samples)."""
+        t_points = np.array([0.0, 600.0])
+        f_points = np.array([7.6699, 7.6699])
+        t, x = generate_pathological_ringdown(
+            **self.COMMON,
+            f_trajectory=(t_points, f_points),
+            linear_drift=999.0,  # must be ignored
+            rng=np.random.default_rng(3),
+        )
+        t_ref, x_ref = generate_pathological_ringdown(**self.COMMON, rng=np.random.default_rng(3))
+        assert np.allclose(x, x_ref)
+
+    def test_amplitude_dependent_damping_is_non_exponential(self):
+        """damping_beta>0 decays faster at high amplitude than the tau0 exponential."""
+        t, x = generate_pathological_ringdown(
+            **self.COMMON, damping_beta=2e-5, rng=np.random.default_rng(4)
+        )
+        envelope0 = 600.0 * np.exp(-t / 200.0)
+        # Early decay is faster than the zero-amplitude exponential...
+        n_quarter = len(t) // 4
+        assert np.max(np.abs(x[n_quarter : 2 * n_quarter])) < 0.9 * np.max(
+            envelope0[n_quarter : 2 * n_quarter]
+        )
+        # ...but still decays monotonically overall.
+        assert np.max(np.abs(x[-n_quarter:])) < np.max(np.abs(x[:n_quarter]))
+
+    def test_plateau_prevents_decay_to_zero(self):
+        """An added driven plateau keeps a late-record oscillation level."""
+        t, x = generate_pathological_ringdown(
+            **{**self.COMMON, "tau": 60.0},  # decay meets the plateau early
+            plateau_rms=10.0,
+            rng=np.random.default_rng(5),
+        )
+        late = x[-len(x) // 10 :]
+        assert np.std(late) == pytest.approx(10.0, rel=0.5)
+
+    def test_deterministic_with_seed(self):
+        """Same seed and settings give identical records."""
+        kwargs = {
+            **self.COMMON,
+            "sigma_white": 1.5,
+            "plateau_rms": 5.0,
+            "baseline_wander_rms": 3.0,
+        }
+        _, a = generate_pathological_ringdown(**kwargs, rng=np.random.default_rng(6))
+        _, b = generate_pathological_ringdown(**kwargs, rng=np.random.default_rng(6))
+        assert np.array_equal(a, b)
