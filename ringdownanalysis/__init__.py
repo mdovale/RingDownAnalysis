@@ -24,6 +24,11 @@ from .compat import (
 )
 from .crlb import CRLBCalculator
 from .data_loader import RingDownDataLoader
+from .demod import (
+    AmplitudeBandQ,
+    SegmentedDemodEstimator,
+    SegmentedDemodResult,
+)
 from .estimators import (
     DFTFrequencyEstimator,
     EstimationResult,
@@ -93,6 +98,9 @@ __all__ = [
     "QEnvelopeDiagnostic",
     "ProfileQEstimator",
     "QProfileResult",
+    "AmplitudeBandQ",
+    "SegmentedDemodEstimator",
+    "SegmentedDemodResult",
     "CRLBCalculator",
     "RingDownDataLoader",
     "RingDownAnalyzer",
