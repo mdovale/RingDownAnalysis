@@ -17,10 +17,13 @@ from ringdownanalysis import (
     RingDownAnalyzer,
     RingDownSignal,
 )
+from ringdownanalysis.demod import SegmentedDemodEstimator
 from ringdownanalysis.estimators import (
     _estimate_initial_parameters_from_dft,
     _estimate_initial_tau_from_envelope,
 )
+from ringdownanalysis.q_profile import ProfileQEstimator
+from ringdownanalysis.signal import generate_pathological_ringdown
 
 # ============================================================================
 # Critical Workload Definitions
@@ -57,6 +60,19 @@ STANDARD_PARAMS = {
     "A0": 1.0,
     "snr_db": 60.0,  # dB
     "Q": 10000.0,
+}
+
+# EDU R1 record parameters (data/ODIN/2026032{1,5}_EDU_R1.csv.zip). The Q
+# estimators are shaped by this workload: a heavily oversampled tone, mHz-scale
+# drift across the decay and an ambient-driven amplitude plateau.
+EDU_PARAMS = {
+    "f0": 7.6699,  # Hz
+    "fs": 149.01,  # Hz
+    "tau": 3700.0,  # s
+    "a0": 1000.0,
+    "duration": 3600.0,  # s
+    "sigma_white": 2.5,
+    "plateau_rms": 16.5 / np.sqrt(2.0),
 }
 
 
@@ -99,6 +115,23 @@ def large_signal(rng):
     signal = RingDownSignal(**params)
     t, x, _ = signal.generate(rng=rng)
     return t, x, signal
+
+
+@pytest.fixture(scope="module")
+def edu_record():
+    """One hour of EDU-like ring-down: drift, plateau and white noise."""
+    t, x = generate_pathological_ringdown(
+        f0=EDU_PARAMS["f0"],
+        fs=EDU_PARAMS["fs"],
+        duration=EDU_PARAMS["duration"],
+        a0=EDU_PARAMS["a0"],
+        tau=EDU_PARAMS["tau"],
+        sigma_white=EDU_PARAMS["sigma_white"],
+        linear_drift=1.1e-3 / EDU_PARAMS["duration"],
+        plateau_rms=EDU_PARAMS["plateau_rms"],
+        rng=np.random.default_rng(20260820),
+    )
+    return t, x, EDU_PARAMS["fs"]
 
 
 @pytest.fixture
@@ -489,6 +522,49 @@ class TestMonteCarlo:
 
         result = benchmark.pedantic(run_mc, rounds=1, iterations=1)
         assert "errors_nls" in result
+
+
+class TestQEstimation:
+    """
+    Benchmark the drift-tolerant Q estimators.
+
+    These track the optimized hot paths in ``demod`` and ``q_profile``. For the
+    before/after comparison against the pre-optimization implementations, and
+    for the numerical-agreement check that goes with it, run
+    ``benchmarks/bench_qestimation.py`` instead.
+    """
+
+    def test_demod_estimate_medium(self, benchmark, edu_record):
+        """Segmented demodulation over a drifting, plateauing record."""
+        t, x, fs = edu_record
+        estimator = SegmentedDemodEstimator()
+
+        result = benchmark(lambda: estimator.estimate(t, x, fs, f_init=EDU_PARAMS["f0"]))
+        assert result.status in {"valid", "warning"}
+
+    def test_demod_segment_medium(self, benchmark, edu_record):
+        """One segment of the demodulation loop, in isolation."""
+        t, x, fs = edu_record
+        estimator = SegmentedDemodEstimator()
+        seg_duration = estimator._resolve_seg_duration(float(t[-1] - t[0]), EDU_PARAMS["f0"], fs)
+        n_segment = min(int(seg_duration * fs), len(x))
+        ts, ys = t[:n_segment] - t[0], x[:n_segment]
+        band = (0.95 * EDU_PARAMS["f0"], 1.05 * EDU_PARAMS["f0"])
+
+        result = benchmark(lambda: estimator._demodulate_segment(ts, ys, fs, band))
+        assert result is not None
+
+    def test_profile_estimate_medium(self, benchmark, edu_record):
+        """Profile-likelihood tau scan, the dominant coherent fit."""
+        t, x, fs = edu_record
+        estimator = ProfileQEstimator()
+
+        result = benchmark(
+            lambda: estimator.estimate(
+                t, x, fs, f_init=EDU_PARAMS["f0"], tau_init=EDU_PARAMS["tau"]
+            )
+        )
+        assert np.isfinite(result.rss_min)
 
 
 # ============================================================================

@@ -35,7 +35,27 @@ python benchmarks/run_profiling.py single_file --size medium
 python benchmarks/run_profiling.py all --size medium
 ```
 
-### 4. View Results
+### 4. Measure the Q-Estimation Optimizations
+
+`bench_qestimation.py` is a self-contained before/after harness for the
+drift-tolerant Q estimators (`demod`, `q_profile`) and the analyzer pipeline
+that calls them. It runs the current library and the frozen pre-optimization
+implementations in `baseline_qestimation.py` side by side in one process, on the
+same records, and reports both the speedup and the numerical agreement:
+
+```bash
+python benchmarks/bench_qestimation.py                    # synthetic workloads
+python benchmarks/bench_qestimation.py --sizes 1h --repeat 5
+python benchmarks/bench_qestimation.py --real-data        # also the EDU records
+python benchmarks/bench_qestimation.py --json out.json
+```
+
+Agreement is not a nice-to-have here: the optimizations are algebraic rewrites
+of the same estimators, so a deviation above float round-off is a bug and the
+script exits non-zero. Do not edit `baseline_qestimation.py` to track library
+changes — that is precisely the comparison it exists to hold still.
+
+### 5. View Results
 
 - Benchmark results: `benchmarks/results/benchmark_*.json`
 - Benchmark reports: `benchmarks/results/report_*.txt`
@@ -45,6 +65,8 @@ python benchmarks/run_profiling.py all --size medium
 ## Files
 
 - **`benchmark_suite.py`**: Comprehensive pytest-benchmark test suite
+- **`bench_qestimation.py`**: Before/after harness for the Q-estimation stack
+- **`baseline_qestimation.py`**: Frozen pre-optimization Q-estimation hot paths
 - **`run_benchmarks.py`**: Script to run benchmarks and generate reports
 - **`profile_utils.py`**: cProfile utilities for profiling workloads
 - **`run_profiling.py`**: Script to profile workloads and identify bottlenecks
@@ -69,6 +91,8 @@ The benchmark suite defines four workload sizes:
 5. **Full Analysis Pipeline**: Complete single-file analysis
 6. **Batch Operations**: Consistency analysis, CRLB comparison, Q factors
 7. **Monte Carlo**: Multiple trials with statistics
+8. **Q Estimation**: Segmented demodulation and the profile-likelihood tau scan,
+   on an EDU-like record (drift, plateau, heavily oversampled tone)
 
 ## Running with pytest
 
