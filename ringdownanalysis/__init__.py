@@ -36,6 +36,7 @@ from .estimators import (
     NLSFrequencyEstimator,
 )
 from .monte_carlo import MonteCarloAnalyzer
+from .nonlinear import NonlinearDampingResult, fit_nonlinear_damping
 from .plots import (
     plot_aggregate_results,
     plot_individual_results,
@@ -101,6 +102,8 @@ __all__ = [
     "AmplitudeBandQ",
     "SegmentedDemodEstimator",
     "SegmentedDemodResult",
+    "NonlinearDampingResult",
+    "fit_nonlinear_damping",
     "CRLBCalculator",
     "RingDownDataLoader",
     "RingDownAnalyzer",
