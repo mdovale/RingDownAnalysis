@@ -337,11 +337,15 @@ class SegmentedDemodEstimator:
 
         - plateau_detected: the record decays well above the floor and is flat
           late — the late median is a usable floor for the corrected fit.
-        - plateau_dominated: the record is flat late, decays early, but never
-          rises meaningfully above the floor — there is no measurable free
-          decay in this window.
+        - plateau_dominated: the record is flat late but never rises
+          meaningfully above the floor — there is no measurable free decay in
+          this window.
         - dynamic_range_ok: the record spans enough amplitude above the late
-          median for a floor-corrected decay fit to make sense.
+          median for a floor-corrected decay fit to make sense. The range is
+          measured from a robust peak (median of the top-decile amplitudes),
+          not from the first-quartile median: a long plateau tail after a
+          perfectly good decay must not dilute the usable dynamic range
+          (e.g. a 17 h record whose decay is only the first 4 h).
         """
         quartile = np.ceil(4.0 * (t_mid - t_mid[0]) / max(t_mid[-1] - t_mid[0], 1e-30))
         quartile = np.clip(quartile, 1, 4)
@@ -358,7 +362,9 @@ class SegmentedDemodEstimator:
         floor = q4
         flat_late = (q3 / q4) < self.plateau_flatness_ratio
         early_decaying = (q1 / q2) > self.plateau_flatness_ratio
-        dynamic_range_ok = q1 / floor >= self.floor_threshold**2
+        n_peak = max(3, len(amplitude) // 10)
+        a_peak = float(np.median(np.sort(amplitude)[-n_peak:]))
+        dynamic_range_ok = a_peak / floor >= self.floor_threshold**2
 
         if flat_late and dynamic_range_ok:
             return floor, True, False, True
