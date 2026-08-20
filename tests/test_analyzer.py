@@ -451,6 +451,80 @@ class TestCropCascadeGuard:
         assert result["tau_est_envelope_ratio"] <= 3.0
 
 
+class _FixedProfileEstimator:
+    """Profile-Q stub returning a preset result regardless of the data."""
+
+    def __init__(self, result):
+        self.result = result
+
+    def estimate(self, t, data, fs, **kwargs):
+        return self.result
+
+
+def _valid_profile_result(f_hat: float, tau_hat: float):
+    from ringdownanalysis.q_profile import QProfileResult
+
+    q = float(np.pi * f_hat * tau_hat)
+    return QProfileResult(
+        f_hat=f_hat,
+        tau_hat=tau_hat,
+        Q=q,
+        valid=True,
+        status="valid",
+        reasons=[],
+        ci95=(0.99 * q, 1.01 * q),
+        lower_limit_95=None,
+        upper_limit_95=None,
+        profile_tau=np.array([tau_hat]),
+        profile_q=np.array([q]),
+        profile_delta=np.array([0.0]),
+        rss_min=1.0,
+        sigma=1.0,
+        dof=10,
+        n_grid=1,
+        method="stub",
+    )
+
+
+class TestEnvelopeMismatchGating:
+    """A profile Q disagreeing with the measured envelope must not stay valid."""
+
+    @staticmethod
+    def _decaying_signal(tau: float = 2.0, duration: float = 10.0, fs: float = 1000.0):
+        t = np.arange(0.0, duration, 1.0 / fs)
+        data = np.exp(-t / tau) * np.cos(2.0 * np.pi * 5.0 * t)
+        return t, data
+
+    def test_mismatching_profile_q_is_demoted_to_warning(self):
+        """Profile Q 5x off the envelope slope is demoted with envelope_mismatch."""
+        t, data = self._decaying_signal(tau=2.0)
+        # Envelope tau is ~2 s; the stubbed profile claims tau = 0.4 s (5x faster).
+        profile_stub = _FixedProfileEstimator(_valid_profile_result(f_hat=5.0, tau_hat=0.4))
+        analyzer = RingDownAnalyzer(q_profile_estimator=profile_stub)
+
+        result = analyzer.analyze_array(t=t, data=data)
+
+        assert result["Q_envelope_candidate_agrees"] is False
+        assert result["Q_profile"] is None
+        assert result["Q_profile_valid"] is False
+        assert result["Q_profile_status"] == "warning"
+        assert "envelope_mismatch" in result["Q_profile_reasons"]
+        assert result["Q_profile_raw"] == pytest.approx(np.pi * 5.0 * 0.4)
+
+    def test_agreeing_profile_q_stays_valid(self):
+        """Profile Q matching the envelope slope keeps its valid status."""
+        t, data = self._decaying_signal(tau=2.0)
+        profile_stub = _FixedProfileEstimator(_valid_profile_result(f_hat=5.0, tau_hat=2.0))
+        analyzer = RingDownAnalyzer(q_profile_estimator=profile_stub)
+
+        result = analyzer.analyze_array(t=t, data=data)
+
+        assert result["Q_envelope_candidate_agrees"] is True
+        assert result["Q_profile_status"] == "valid"
+        assert result["Q_profile"] == pytest.approx(np.pi * 5.0 * 2.0)
+        assert result["Q_profile_raw"] == result["Q_profile"]
+
+
 class TestAnalyzerEdgeCases:
     """Edge case tests for RingDownAnalyzer."""
 

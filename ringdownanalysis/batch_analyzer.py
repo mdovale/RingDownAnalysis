@@ -117,12 +117,16 @@ def _result_q_value(
         q_valid = bool(result.get("Q_profile_valid", False))
         q_status = str(result.get("Q_profile_status", "valid" if q_valid else "invalid"))
         q = result.get("Q_profile")
-        if q is not None and np.isfinite(q):
-            return float(q), q_valid, q_status
+        # Only a valid profile Q is batch-preferred; warning/limit/invalid
+        # profile values (e.g. envelope_mismatch demotions) are skipped.
+        if q_valid and q is not None and np.isfinite(q):
+            return float(q), True, q_status
         if not include_invalid:
             return None, False, q_status
 
-        q = result.get("Q_nls_raw")
+        q = result.get("Q_profile_raw")
+        if q is None or not np.isfinite(q):
+            q = result.get("Q_nls_raw")
         if q is None or not np.isfinite(q):
             return None, False, q_status
         return float(q), False, q_status
@@ -544,6 +548,7 @@ class BatchRingDownAnalyzer:
                     "Q_DFT_status": r.get("Q_dft_status"),
                     "Q_DFT_reasons": ", ".join(r.get("Q_dft_reasons", [])),
                     "Q_profile": r.get("Q_profile"),
+                    "Q_profile_raw": r.get("Q_profile_raw"),
                     "Q_profile_valid": r.get("Q_profile_valid"),
                     "Q_profile_status": r.get("Q_profile_status"),
                     "Q_profile_reasons": ", ".join(r.get("Q_profile_reasons", [])),
@@ -608,6 +613,7 @@ class BatchRingDownAnalyzer:
                 "Q_DFT",
                 "Q_DFT_raw",
                 "Q_profile",
+                "Q_profile_raw",
                 "Q_profile_lower_limit_95",
                 "Q_profile_upper_limit_95",
                 "Q",

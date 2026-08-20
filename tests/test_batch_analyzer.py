@@ -158,6 +158,70 @@ class TestBatchRingDownAnalyzer:
         assert batch_analyzer.results[0]["Q_valid"] is False
         assert batch_analyzer.results[0]["Q_status"] == "lower_limit"
 
+    def test_calculate_q_factors_skips_mismatch_demoted_profile(self):
+        """A finite but non-valid profile Q (envelope mismatch) is not batch-preferred."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_nls": 123.0,
+                "Q_nls_raw": 123.0,
+                "Q_nls_valid": True,
+                "Q_nls_status": "valid",
+                "Q_profile": None,
+                "Q_profile_raw": 456.0,
+                "Q_profile_valid": False,
+                "Q_profile_status": "warning",
+                "Q_profile_reasons": ["envelope_mismatch"],
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == []
+        assert batch_analyzer.results[0]["Q"] is None
+        assert batch_analyzer.results[0]["Q_valid"] is False
+        assert batch_analyzer.results[0]["Q_status"] == "warning"
+
+    def test_calculate_q_factors_never_returns_stale_profile_value_as_valid(self):
+        """Even a finite Q_profile field is skipped when Q_profile_valid is False."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_profile": 456.0,
+                "Q_profile_valid": False,
+                "Q_profile_status": "warning",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == []
+        assert batch_analyzer.results[0]["Q"] is None
+
+    def test_calculate_q_factors_include_invalid_uses_profile_raw(self):
+        """include_invalid falls back to the raw profile value when present."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_nls_raw": 123.0,
+                "Q_profile": None,
+                "Q_profile_raw": 456.0,
+                "Q_profile_valid": False,
+                "Q_profile_status": "warning",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors(include_invalid=True)
+
+        assert q_factors == [456.0]
+        assert batch_analyzer.results[0]["Q_valid"] is False
+
     def test_get_summary_table(self):
         """Test summary table generation."""
         batch_analyzer = BatchRingDownAnalyzer()

@@ -4,6 +4,7 @@ Analysis pipeline for real ring-down measurement data.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from pathlib import Path
 from typing import NamedTuple
@@ -853,6 +854,33 @@ class RingDownAnalyzer:
         else:
             candidate_envelope_q = None
         q_envelope = q_envelope_diagnostic(t, data, profile_f_init, q=candidate_envelope_q)
+        # Envelope-mismatch gate: a coherent profile Q that disagrees with the
+        # measured envelope slope must not be reported as a valid finite Q.
+        # The raw optimizer value stays available in Q_profile_raw.
+        q_profile_raw = q_profile.Q
+        if (
+            q_profile.valid
+            and _is_positive_finite(q_profile.Q)
+            and candidate_envelope_q == q_profile.Q
+            and q_envelope.candidate_agrees is False
+        ):
+            q_profile = dataclasses.replace(
+                q_profile,
+                Q=None,
+                valid=False,
+                status="warning",
+                reasons=[*q_profile.reasons, "envelope_mismatch"],
+            )
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning(
+                    "q_profile_envelope_mismatch",
+                    extra={
+                        "event": "q_profile_envelope_mismatch",
+                        "q_profile_raw": float(q_profile_raw) if q_profile_raw else None,
+                        "q_envelope": q_envelope.Q,
+                        "slope_mismatch": q_envelope.candidate_slope_mismatch,
+                    },
+                )
         if q_nls_assessment.valid and tau_nls is not None:
             tau_model = tau_nls
         elif q_dft_assessment.valid and tau_dft is not None:
@@ -933,6 +961,7 @@ class RingDownAnalyzer:
             "Q_dft_raw_to_pre_crop_ratio": q_dft_assessment.raw_to_pre_crop_ratio,
             "Q_pre_crop": Q_pre_crop,
             "Q_profile": q_profile.Q,
+            "Q_profile_raw": q_profile_raw,
             "Q_profile_valid": q_profile.valid,
             "Q_profile_status": q_profile.status,
             "Q_profile_reasons": q_profile.reasons,
@@ -1222,6 +1251,7 @@ class RingDownAnalyzer:
                             "Q_dft_reasons": result["Q_dft_reasons"],
                             "Q_dft_raw_to_pre_crop_ratio": result["Q_dft_raw_to_pre_crop_ratio"],
                             "Q_profile": result["Q_profile"],
+                            "Q_profile_raw": result["Q_profile_raw"],
                             "Q_profile_valid": result["Q_profile_valid"],
                             "Q_profile_status": result["Q_profile_status"],
                             "Q_profile_reasons": result["Q_profile_reasons"],
