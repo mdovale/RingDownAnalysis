@@ -126,6 +126,19 @@ By default, `load()` enforces a maximum file size (1 GB). Use `max_file_size_byt
 
 ---
 
+## Loading via mokutools (large zipped exports)
+
+Long phasemeter records distributed as `.csv.zip` (e.g. the EDU ring-down
+records under `data/ODIN/`) are loaded with `mokutools` in the analysis
+notebooks. One semantic pitfall:
+
+- **`start_time` is an offset, not an absolute time.** The `start_time`
+  argument selects data relative to the *first sample of the file*. Passing
+  an absolute timestamp silently selects the wrong window. Select windows as
+  offsets from release (`start_time=0.0` is the beginning of the record).
+
+---
+
 ## Units Summary
 
 | Quantity | Unit   | Notes                          |

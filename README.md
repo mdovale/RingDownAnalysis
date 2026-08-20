@@ -138,6 +138,75 @@ window/crop sensitivity, use `RingDownAnalyzer.q_sensitivity(...)`; it returns
 DataFrame-ready records with valid Q, raw Q, status, reasons, tau bound flags,
 and crop metadata for each requested start/duration/multiplier combination.
 
+#### Which Q should I trust?
+
+The pipeline reports several Q estimates because they make different
+assumptions, and real records violate some of them. In order of preference:
+
+1. **`Q_selected`** — the recommended single answer. The pipeline classifies
+   each record from its own diagnostics (`Q_selected_regime`) and picks the
+   estimator whose assumptions hold: the segmented-demodulation Q for long or
+   drifting records, the profile Q for short coherent ones, and *no finite Q*
+   for plateau-dominated windows. Cross-estimator agreement within a factor
+   1.5 is a hard condition: if the estimators disagree, `Q_selected` is
+   `None` with status `warning` and reason `cross_estimator_disagreement`.
+2. **`Q_demod`** — incoherent segmented-demodulation estimate
+   (`SegmentedDemodEstimator`). Immune to the frequency drift that biases
+   every phase-coherent fit, models the ambient-driven plateau, and reports
+   amplitude-resolved local Q (`Q_demod_vs_amplitude`), the frequency drift
+   (`Q_demod_drift_hz`), and the plateau level. Use this for long real-data
+   records. `Q_demod_ci95` comes from a residual block bootstrap over
+   segments, not from a white-noise model.
+3. **`Q_profile`** — profile-likelihood coherent fit. Exact on short,
+   drift-free records; on drifting resonators it can be biased by factors of
+   2–4 *while reporting a tight CI*, so it is gated: it is demoted to
+   non-valid when the measured drift is significant
+   (`coherence_gate_fired=True`, reason `coherence_gate_drift`) or when it
+   disagrees with the measured envelope slope (reason `envelope_mismatch`).
+4. **`Q_envelope`** — incoherent envelope-slope diagnostic. Robust, but
+   biased high on windows that extend past ≈ 3× the plateau level.
+5. **`Q_nls_raw` / `Q_dft_raw`** — raw coherent optimizer products; keep for
+   diagnostics only.
+
+The dimensionless `coherence_ratio` = |measured drift| × τ quantifies drift:
+coherent estimators are trustworthy only for `coherence_ratio` ≲ 0.01.
+
+For amplitude-dependent damping (no single "true Q" exists), fit the
+amplitude laws explicitly:
+
+```python
+from ringdownanalysis import SegmentedDemodEstimator, fit_nonlinear_damping
+
+demod = SegmentedDemodEstimator().estimate(t, x, fs)
+nl = fit_nonlinear_damping(demod)     # 1/tau(A) = 1/tau0 + beta*A
+print(nl.tau0, nl.beta, nl.Q0)        # zero-amplitude decay time and Q
+print(nl.f_zero, nl.f_pull)           # f(A) = f_zero + pull*A
+print(nl.q_at(100.0))                 # amplitude-matched local Q
+```
+
+#### Data-quality notes for real records
+
+- **Driven plateau.** Ambient excitation keeps the resonator oscillating at
+  an equilibrium amplitude (≈ 17 cycles on the EDU records); the record never
+  decays to zero. Windows past the point where the decay meets ≈ 3× the
+  plateau bias envelope fits high, and windows containing only plateau are
+  unusable for Q (`Q_demod_status="plateau_dominated"`).
+- **Frequency drift.** Real resonance frequencies move by 0.3–1.1 mHz during
+  a decay — orders of magnitude beyond the coherence tolerance of coherent
+  fits. Check `coherence_ratio` before trusting `Q_profile`/`Q_nls`.
+- **`start_time` offset semantics.** When loading Moku phasemeter data via
+  `mokutools`, `start_time` is an *offset from the first sample of the file*,
+  not an absolute timestamp. Windows selected with absolute times silently
+  select the wrong data.
+
+#### Migration note: batch Q preference
+
+`BatchRingDownAnalyzer` currently defaults to `q_preference="profile"`
+(historical behavior). For real long-record data construct it with
+`BatchRingDownAnalyzer(q_preference="demod")`, which prefers the drift-immune
+`Q_demod` and falls back to the profile logic when demod has no valid
+estimate. The default will switch to `"demod"` in the next release.
+
 #### Configure Logging
 
 The package uses `NullHandler` by default (no log output). For easier debugging, enable console logging:
@@ -288,8 +357,18 @@ See `examples/batch_analysis_example.py` for a complete batch analysis example.
 
 ### Core Package (`ringdownanalysis/`)
 
-- **`signal.py`**: `RingDownSignal` class for signal generation
+- **`signal.py`**: `RingDownSignal` class for signal generation, plus
+  synthetic pathology generators (`generate_pathological_ringdown`,
+  `generate_driven_plateau`)
 - **`estimators.py`**: Frequency estimation classes (NLS, DFT)
+- **`demod.py`**: `SegmentedDemodEstimator` — drift-immune incoherent Q
+  estimation with plateau modeling and amplitude-resolved output
+- **`nonlinear.py`**: nonlinear-damping and frequency-pull amplitude laws
+  (`fit_nonlinear_damping`)
+- **`selection.py`**: estimator-selection classifier (`select_q_estimate`)
+  behind the `Q_selected` result fields
+- **`q_profile.py`** / **`q_envelope.py`**: profile-likelihood Q and
+  envelope-slope diagnostic
 - **`crlb.py`**: CRLB calculation
 - **`data_loader.py`**: Data loading utilities for CSV and MAT files
 - **`analyzer.py`**: Single-file analysis
