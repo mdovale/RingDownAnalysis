@@ -112,17 +112,17 @@ The loader supports both:
 | Case                          | Behavior                                      |
 |-------------------------------|-----------------------------------------------|
 | Non-existent file             | `FileNotFoundError`                           |
-| Unsupported extension         | `ValueError` ("Unsupported file format")       |
+| Unsupported extension         | `ValueError` ("Unsupported file format")      |
 | File exceeds size limit       | `ValueError` ("exceeds maximum")              |
 | Empty CSV / comments only     | `ValueError` ("No valid data")                |
 | CSV with &lt; 4 columns       | `ValueError`                                  |
-| CSV/MAT NaN or Inf in loaded channels | `ValueError` naming the channel      |
+| CSV/MAT NaN or Inf in loaded channels | `ValueError` naming the channel       |
 | MAT missing `moku` or `data`  | `ValueError` ("Invalid MAT file structure")   |
-| MAT `moku.data` not non-empty 2D with 4+ columns | `ValueError`              |
+| MAT `moku.data` not non-empty 2D with 4+ columns | `ValueError`               |
 
 ### File Size Limit
 
-By default, `load()` enforces a maximum file size (1 GB). Use `max_file_size_bytes=None` to disable. See `RingDownDataLoader.load()` docstring.
+By default, `load()` does not enforce a file-size cap. Pass `max_file_size_bytes` to reject files above a threshold. See `RingDownDataLoader.load()` docstring.
 
 ---
 
@@ -141,8 +141,8 @@ notebooks. One semantic pitfall:
 
 ## Units Summary
 
-| Quantity | Unit   | Notes                          |
-|----------|--------|--------------------------------|
-| Time     | s      | Seconds                        |
-| Phase    | cycles| Phase in cycles (0–1 = one cycle) |
-| Frequency| Hz     | Output of estimators           |
+| Quantity | Unit   | Notes                            |
+|----------|--------|----------------------------------|
+| Time     | s      | Seconds                          |
+| Phase    | cycles | Phase in cycles (0–1 = one cycle)|
+| Frequency| Hz     | Output of estimators             |

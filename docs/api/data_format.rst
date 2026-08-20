@@ -174,10 +174,10 @@ Edge Cases and Errors
    * - MAT missing moku or data
      - ``ValueError`` ("Invalid MAT file structure")
 
-File Size Limit
-~~~~~~~~~~~~~~~
+Optional File Size Limit
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, ``load()`` enforces a maximum file size (1 GB). Use ``max_file_size_bytes=None`` to disable.
+By default, ``load()`` does not enforce a file-size cap. Pass ``max_file_size_bytes`` to reject files above a threshold.
 
 Units Summary
 -------------
