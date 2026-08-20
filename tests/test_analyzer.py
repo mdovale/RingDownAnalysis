@@ -402,6 +402,55 @@ class TestRingDownAnalyzer:
         assert all("Q_envelope_candidate_agrees" in record for record in records)
 
 
+class TestCropCascadeGuard:
+    """Crop cascade guard: a collapsed coherent tau must not destroy the window."""
+
+    @staticmethod
+    def _decaying_signal(tau: float = 2.0, duration: float = 10.0, fs: float = 1000.0):
+        t = np.arange(0.0, duration, 1.0 / fs)
+        data = np.exp(-t / tau) * np.cos(2.0 * np.pi * 5.0 * t)
+        return t, data
+
+    def test_crop_data_to_tau_respects_min_duration(self):
+        """min_duration keeps at least the requested span even for small tau."""
+        t, data = self._decaying_signal()
+        analyzer = RingDownAnalyzer()
+        t_crop, _ = analyzer.crop_data_to_tau(
+            t, data, tau_est=0.5, min_samples=10, max_tau_multiplier=1.0, min_duration=4.0
+        )
+        assert t_crop[-1] == pytest.approx(4.0, abs=1e-2)
+
+    def test_collapsed_tau_est_falls_back_to_envelope_crop(self):
+        """A tau_est that disagrees >3x with the envelope tau must not set the crop."""
+        t, data = self._decaying_signal(tau=2.0)
+        analyzer = RingDownAnalyzer()
+        # Simulate the coherence collapse of the full-record NLS fit.
+        analyzer.estimate_tau = lambda *args, **kwargs: 0.5
+
+        result = analyzer.analyze_array(t=t, data=data)
+
+        assert result["tau_envelope_precrop"] == pytest.approx(2.0, rel=0.3)
+        assert result["tau_crop_source"] == "envelope_tau_disagreement_fallback"
+        assert result["tau_est_envelope_ratio"] > 3.0
+        assert result["tau_est_low_confidence"] is True
+        # Crop is driven by the envelope tau, and at least one envelope tau survives.
+        assert result["T_crop"] >= result["tau_envelope_precrop"]
+        assert result["T_crop"] > 3.0 * 0.5 + 1e-6
+
+    def test_agreeing_tau_est_keeps_default_crop(self):
+        """When tau_est and the envelope tau agree, cropping behaves as before."""
+        t, data = self._decaying_signal(tau=2.0)
+        analyzer = RingDownAnalyzer()
+        analyzer.estimate_tau = lambda *args, **kwargs: 2.0
+
+        result = analyzer.analyze_array(t=t, data=data)
+
+        assert result["tau_crop_source"] == "tau_est"
+        assert result["tau_crop"] == pytest.approx(2.0)
+        assert result["tau_est_envelope_ratio"] is not None
+        assert result["tau_est_envelope_ratio"] <= 3.0
+
+
 class TestAnalyzerEdgeCases:
     """Edge case tests for RingDownAnalyzer."""
 

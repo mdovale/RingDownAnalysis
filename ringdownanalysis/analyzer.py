@@ -460,6 +460,7 @@ class RingDownAnalyzer:
         tau_est: float,
         min_samples: int = 100,
         max_tau_multiplier: float = 3.0,
+        min_duration: float | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Crop data to max_tau_multiplier*tau_est to avoid long noisy tail affecting frequency estimation.
@@ -476,6 +477,10 @@ class RingDownAnalyzer:
             Minimum number of samples required. If cropped data is shorter, return original.
         max_tau_multiplier : float
             Multiplier for tau_est to determine maximum record length. Default is 3.0.
+        min_duration : float, optional
+            Never crop the record shorter than this duration (s). Used by the
+            pipeline to guarantee at least one envelope decay time of data even
+            when the coherent tau fit collapses to a small value.
 
         Returns:
         --------
@@ -486,6 +491,8 @@ class RingDownAnalyzer:
         if not np.isfinite(tau_est) or tau_est <= 0:
             raise ValueError(f"tau_est must be positive and finite, got {tau_est}")
         t_crop_max = max_tau_multiplier * tau_est
+        if min_duration is not None and np.isfinite(min_duration) and min_duration > 0:
+            t_crop_max = max(t_crop_max, float(min_duration))
         crop_idx = t <= t_crop_max
         t_crop = t[crop_idx]
         data_cropped = data[crop_idx]
@@ -685,8 +692,53 @@ class RingDownAnalyzer:
             gtol=gtol,
         )
 
+        # Crop cascade guard: the coherent full-record tau fit can collapse to a
+        # small value on decoherent data (frequency drift), which would silently
+        # crop away almost all of the selected window. Cross-check tau_est
+        # against the incoherent envelope tau before trusting it for cropping.
+        f0_init_full = float(initial_params_full[0])
+        envelope_precrop = q_envelope_diagnostic(t, data, f0_init_full)
+        tau_envelope_precrop = (
+            float(envelope_precrop.tau)
+            if envelope_precrop.valid and envelope_precrop.tau is not None
+            else None
+        )
+        record_duration = float(t[-1] - t[0])
+        tau_crop = tau_est
+        tau_crop_source = "tau_est"
+        tau_est_envelope_ratio: float | None = None
+        # An envelope tau longer than the record is not identifiable (flat or
+        # barely decaying envelope) and must not override the coherent fit.
+        tau_envelope_identifiable = (
+            tau_envelope_precrop is not None and tau_envelope_precrop <= record_duration
+        )
+        if tau_envelope_precrop is not None and _is_positive_finite(tau_est):
+            tau_est_envelope_ratio = float(
+                max(tau_est / tau_envelope_precrop, tau_envelope_precrop / tau_est)
+            )
+        if tau_envelope_identifiable and tau_est_envelope_ratio is not None:
+            assert tau_envelope_precrop is not None
+            if tau_est_envelope_ratio > 3.0:
+                tau_crop = tau_envelope_precrop
+                tau_crop_source = "envelope_tau_disagreement_fallback"
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        "tau_est_envelope_disagreement",
+                        extra={
+                            "event": "tau_est_envelope_disagreement",
+                            "tau_est": float(tau_est),
+                            "tau_envelope": tau_envelope_precrop,
+                            "ratio": tau_est_envelope_ratio,
+                        },
+                    )
+
         t_crop, data_cropped = self.crop_data_to_tau(
-            t, data, tau_est, min_samples=1000, max_tau_multiplier=max_tau_multiplier
+            t,
+            data,
+            tau_crop,
+            min_samples=1000,
+            max_tau_multiplier=max_tau_multiplier,
+            min_duration=tau_envelope_precrop if tau_envelope_identifiable else None,
         )
 
         min_samples_for_analysis = 1000
@@ -698,7 +750,10 @@ class RingDownAnalyzer:
             initial_params_cropped = _estimate_initial_parameters_from_dft(data_cropped, fs)
 
         t_crop_norm = t_crop - t_crop[0]
-        tau_cropped_seed = tau_est
+        tau_cropped_seed = tau_crop
+        tau_cropped_seed_source = (
+            "full_record_tau_est" if tau_crop_source == "tau_est" else "envelope_precrop"
+        )
         tau_cropped_init, tau_cropped_lower, tau_cropped_upper = _sanitize_tau_guess(
             tau_cropped_seed,
             t_crop_norm,
@@ -747,6 +802,7 @@ class RingDownAnalyzer:
             or T_over_tau_est < 1.0
             or tau_est_at_lower
             or tau_est_at_upper
+            or tau_crop_source != "tau_est"
         )
         Q_pre_crop = float(np.pi * f_nls * tau_est) if np.isfinite(f_nls) else np.nan
         q_nls_assessment = _assess_q_estimate(
@@ -845,8 +901,12 @@ class RingDownAnalyzer:
             "tau_est_at_upper_bound": tau_est_at_upper,
             "T_over_tau_est": T_over_tau_est,
             "tau_est_low_confidence": tau_est_low_confidence,
+            "tau_envelope_precrop": tau_envelope_precrop,
+            "tau_crop": tau_crop,
+            "tau_crop_source": tau_crop_source,
+            "tau_est_envelope_ratio": tau_est_envelope_ratio,
             "tau_cropped_seed": tau_cropped_seed,
-            "tau_cropped_seed_source": "full_record_tau_est",
+            "tau_cropped_seed_source": tau_cropped_seed_source,
             "tau_cropped_init": tau_cropped_init,
             "tau_cropped_lower": tau_cropped_lower,
             "tau_cropped_upper": tau_cropped_upper,
