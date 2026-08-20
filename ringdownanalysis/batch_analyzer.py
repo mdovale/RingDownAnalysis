@@ -109,9 +109,30 @@ def _format_optional_float(value, fmt: str) -> str:
 
 
 def _result_q_value(
-    result: dict, *, include_invalid: bool = False
+    result: dict, *, include_invalid: bool = False, q_preference: str = "profile"
 ) -> tuple[float | None, bool, str]:
-    """Return the preferred Q value plus validity metadata for a result."""
+    """
+    Return the preferred Q value plus validity metadata for a result.
+
+    q_preference="demod" prefers a valid segmented-demodulation Q (the
+    drift-immune estimator); when the demod estimate is not valid the profile
+    logic below still applies, so a coherent record with a valid (gated)
+    profile Q is not lost. q_preference="profile" preserves the historical
+    behavior.
+    """
+    if q_preference not in ("profile", "demod"):
+        raise ValueError(f"q_preference must be 'profile' or 'demod', got {q_preference!r}")
+
+    if q_preference == "demod" and "Q_demod" in result:
+        q_demod = result.get("Q_demod")
+        demod_valid = bool(result.get("Q_demod_valid", False))
+        demod_status = str(result.get("Q_demod_status", "valid" if demod_valid else "invalid"))
+        if demod_valid and q_demod is not None and np.isfinite(q_demod):
+            return float(q_demod), True, demod_status
+        if include_invalid and q_demod is not None and np.isfinite(q_demod):
+            return float(q_demod), False, demod_status
+        # No usable demod Q: fall through to the profile-based selection.
+
     has_profile = "Q_profile_valid" in result
     if has_profile:
         q_valid = bool(result.get("Q_profile_valid", False))
@@ -166,6 +187,8 @@ class BatchRingDownAnalyzer:
     def __init__(
         self,
         analyzer: RingDownAnalyzer | None = None,
+        *,
+        q_preference: str = "profile",
     ):
         """
         Initialize batch analyzer.
@@ -174,8 +197,17 @@ class BatchRingDownAnalyzer:
         -----------
         analyzer : RingDownAnalyzer, optional
             RingDownAnalyzer instance to use. If None, creates default.
+        q_preference : str
+            Which estimator supplies the aggregate per-record Q:
+            "profile" (default, historical behavior) or "demod" (prefer the
+            drift-immune segmented-demodulation Q; recommended for real
+            long-record data). When the preferred estimator has no valid Q
+            the profile/NLS selection logic still applies.
         """
+        if q_preference not in ("profile", "demod"):
+            raise ValueError(f"q_preference must be 'profile' or 'demod', got {q_preference!r}")
         self.analyzer = analyzer or RingDownAnalyzer()
+        self.q_preference = q_preference
         self.results: list[dict] = []
 
     def process_files(
@@ -472,24 +504,32 @@ class BatchRingDownAnalyzer:
 
         return self.process_files(all_files, verbose=verbose, n_jobs=n_jobs)
 
-    def calculate_q_factors(self, *, include_invalid: bool = False) -> list[float]:
+    def calculate_q_factors(
+        self, *, include_invalid: bool = False, q_preference: str | None = None
+    ) -> list[float]:
         """
         Calculate Q factors for all processed results.
 
-        Uses valid profile Q when available. If profile-Q metadata is present
-        but the profile is invalid or limit-only, the result is skipped by
-        default instead of falling back to NLS. Pass include_invalid=True to use
-        raw NLS Q for diagnostic/debug workflows. Results without validity
-        metadata keep the older Q = π * f * τ fallback behavior.
+        The estimator preference comes from the constructor q_preference
+        (overridable per call). With "profile" (default) a valid profile Q is
+        used when available; with "demod" a valid segmented-demodulation Q
+        takes precedence. If the preferred estimator's Q is invalid or
+        limit-only, the result is skipped by default instead of falling back
+        to NLS. Pass include_invalid=True to use raw values for
+        diagnostic/debug workflows. Results without validity metadata keep the
+        older Q = π * f * τ fallback behavior.
 
         Returns:
         --------
         List[float]
             Q factor for each result
         """
+        preference = q_preference if q_preference is not None else self.q_preference
         q_factors = []
         for r in self.results:
-            q, q_valid, q_status = _result_q_value(r, include_invalid=include_invalid)
+            q, q_valid, q_status = _result_q_value(
+                r, include_invalid=include_invalid, q_preference=preference
+            )
             r["Q"] = q
             r["Q_valid"] = q_valid
             r["Q_status"] = q_status
@@ -558,6 +598,17 @@ class BatchRingDownAnalyzer:
                     "Q_profile_upper_limit_95": r.get("Q_profile_upper_limit_95"),
                     "tau_profile (s)": r.get("tau_profile"),
                     "f_profile (Hz)": r.get("f_profile"),
+                    "Q_demod": r.get("Q_demod"),
+                    "Q_demod_valid": r.get("Q_demod_valid"),
+                    "Q_demod_status": r.get("Q_demod_status"),
+                    "Q_demod_reasons": ", ".join(r.get("Q_demod_reasons", [])),
+                    "Q_demod_ci95": r.get("Q_demod_ci95"),
+                    "tau_demod (s)": r.get("tau_demod"),
+                    "f_demod (Hz)": r.get("f_demod"),
+                    "coherence_ratio": r.get("coherence_ratio"),
+                    "coherence_gate_fired": r.get("coherence_gate_fired"),
+                    "plateau_amplitude": r.get("Q_demod_plateau_amplitude"),
+                    "plateau_detected": r.get("Q_demod_plateau_detected"),
                     "NLS success": r.get("nls_success"),
                     "DFT success": r.get("dft_success"),
                     "NLS used fallback": r.get("nls_used_fallback"),
@@ -598,10 +649,11 @@ class BatchRingDownAnalyzer:
                 "tau_nls (s)",
                 "tau_dft (s)",
                 "tau_profile (s)",
+                "tau_demod (s)",
             ):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".2f")
-            for key in ("f_NLS (Hz)", "f_DFT (Hz)", "f_profile (Hz)"):
+            for key in ("f_NLS (Hz)", "f_DFT (Hz)", "f_profile (Hz)", "f_demod (Hz)"):
                 if key in formatted:
                     formatted[key] = _format_optional_float(formatted[key], ".6f")
             for key in ("|f_NLS - f_DFT| (Hz)", "Plugin bound std (Hz)", "sigma_est"):
@@ -617,6 +669,7 @@ class BatchRingDownAnalyzer:
                 "Q_profile_raw",
                 "Q_profile_lower_limit_95",
                 "Q_profile_upper_limit_95",
+                "Q_demod",
                 "Q",
             ):
                 if key in formatted:
@@ -818,7 +871,9 @@ class BatchRingDownAnalyzer:
             "ratio_statistics": ratio_stats,
         }
 
-    def get_q_factor_statistics(self, *, include_invalid: bool = False) -> dict:
+    def get_q_factor_statistics(
+        self, *, include_invalid: bool = False, q_preference: str | None = None
+    ) -> dict:
         """
         Calculate Q factor statistics.
 
@@ -837,7 +892,7 @@ class BatchRingDownAnalyzer:
             return {}
 
         # Ensure Q factors are calculated using the requested validity policy.
-        self.calculate_q_factors(include_invalid=include_invalid)
+        self.calculate_q_factors(include_invalid=include_invalid, q_preference=q_preference)
 
         q_values = np.array([r["Q"] for r in self.results if r.get("Q") is not None], dtype=float)
         skipped_count = len(self.results) - len(q_values)

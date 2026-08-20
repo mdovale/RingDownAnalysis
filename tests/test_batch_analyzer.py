@@ -222,6 +222,97 @@ class TestBatchRingDownAnalyzer:
         assert q_factors == [456.0]
         assert batch_analyzer.results[0]["Q_valid"] is False
 
+    def test_q_preference_demod_prefers_valid_demod_q(self):
+        """q_preference='demod' returns the valid demod Q over a valid profile Q."""
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="demod")
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_profile": 456.0,
+                "Q_profile_valid": True,
+                "Q_profile_status": "valid",
+                "Q_demod": 789.0,
+                "Q_demod_valid": True,
+                "Q_demod_status": "valid",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == [789.0]
+        assert batch_analyzer.results[0]["Q"] == 789.0
+        assert batch_analyzer.results[0]["Q_valid"] is True
+
+    def test_q_preference_demod_falls_back_to_valid_profile(self):
+        """When the demod Q is invalid, a valid profile Q is still used."""
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="demod")
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_profile": 456.0,
+                "Q_profile_valid": True,
+                "Q_profile_status": "valid",
+                "Q_demod": None,
+                "Q_demod_valid": False,
+                "Q_demod_status": "invalid",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == [456.0]
+        assert batch_analyzer.results[0]["Q_valid"] is True
+
+    def test_q_preference_demod_skips_warning_demod_by_default(self):
+        """A finite but non-valid demod Q is not batch-preferred by default."""
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="demod")
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_profile": None,
+                "Q_profile_valid": False,
+                "Q_profile_status": "warning",
+                "Q_demod": 789.0,
+                "Q_demod_valid": False,
+                "Q_demod_status": "warning",
+            },
+        ]
+
+        q_factors = batch_analyzer.calculate_q_factors()
+
+        assert q_factors == []
+        assert batch_analyzer.results[0]["Q"] is None
+
+        q_factors = batch_analyzer.calculate_q_factors(include_invalid=True)
+        assert q_factors == [789.0]
+        assert batch_analyzer.results[0]["Q_valid"] is False
+
+    def test_q_preference_per_call_override(self):
+        """calculate_q_factors(q_preference=...) overrides the constructor setting."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_profile": 456.0,
+                "Q_profile_valid": True,
+                "Q_profile_status": "valid",
+                "Q_demod": 789.0,
+                "Q_demod_valid": True,
+                "Q_demod_status": "valid",
+            },
+        ]
+
+        assert batch_analyzer.calculate_q_factors() == [456.0]
+        assert batch_analyzer.calculate_q_factors(q_preference="demod") == [789.0]
+
+    def test_q_preference_rejects_unknown_value(self):
+        with pytest.raises(ValueError, match="q_preference"):
+            BatchRingDownAnalyzer(q_preference="banana")
+
     def test_get_summary_table(self):
         """Test summary table generation."""
         batch_analyzer = BatchRingDownAnalyzer()
