@@ -9,6 +9,12 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import minimize_scalar
 
+from ._gridfit import (
+    RSS_CANCELLATION_FRACTION,
+    BlockIndex,
+    geometric_sum,
+    is_uniformly_sampled,
+)
 from .estimators import (
     _estimate_initial_parameters_from_dft,
     _estimate_initial_tau_from_envelope,
@@ -50,6 +56,165 @@ class _ProjectionFit:
     dof: int
     amplitude: float
     rank: int
+
+
+class _ProfileScan:
+    """
+    Fixed-frequency decaying-tone least squares over a batch of trial taus.
+
+    Every fit in a profile scan solves the same 3-parameter problem
+    ``y ~ exp(-t/tau) * (a*cos(w*t) + b*sin(w*t)) + c`` with the frequency, the
+    time base and the data all held fixed, so nothing but the envelope changes
+    from one trial tau to the next. Two properties of that structure remove
+    almost all of the work:
+
+    - the fit only needs the Gram matrix and the data projections, not the
+      design matrix, and the residual sum of squares follows from them as
+      ``||y||^2 - b'x``;
+    - on a uniform time grid the model is a geometric sequence in the sample
+      index, so the Gram matrix is closed-form
+      (:func:`~ringdownanalysis._gridfit.geometric_sum`) and the projections
+      for the whole batch of taus come from two matrix products
+      (:class:`~ringdownanalysis._gridfit.BlockIndex`).
+
+    Together these replace a length-n exponential, a fresh design matrix and an
+    SVD least-squares solve per grid point with one pass over the data for the
+    entire scan.
+
+    The uniform path evaluates the model on the nominal grid ``k*dt``, with
+    ``dt`` taken from the record endpoints; the uniformity test bounds the
+    resulting phase error (see
+    :data:`~ringdownanalysis._gridfit.UNIFORM_TOLERANCE_SAMPLES`). Records that
+    fail it fall back to an explicit design matrix and ``lstsq``, sharing the
+    tone basis across the scan.
+    """
+
+    __slots__ = (
+        "_cos_wt",
+        "_index",
+        "_matrix",
+        "_phase_step",
+        "_rss_floor",
+        "_sin_wt",
+        "data",
+        "dt",
+        "f_hat",
+        "n",
+        "sy",
+        "t",
+        "uniform",
+        "yy",
+    )
+
+    def __init__(self, t: np.ndarray, data: np.ndarray, f_hat: float):
+        self.t = t
+        self.data = data
+        self.f_hat = float(f_hat)
+        self.n = len(data)
+        self.yy = float(data @ data)
+        self.sy = float(np.sum(data))
+        self._rss_floor = RSS_CANCELLATION_FRACTION * self.yy
+        self.dt = float(t[-1] - t[0]) / (self.n - 1) if self.n > 1 else 0.0
+        self.uniform = self.dt > 0.0 and is_uniformly_sampled(t, 1.0 / self.dt)
+        if self.uniform:
+            self._index = BlockIndex(data)
+            self._phase_step = 2.0 * np.pi * self.f_hat * self.dt
+        else:
+            omega_t = 2.0 * np.pi * self.f_hat * t
+            self._cos_wt = np.cos(omega_t)
+            self._sin_wt = np.sin(omega_t)
+            self._matrix = np.empty((self.n, 3), dtype=np.float64)
+            self._matrix[:, 2] = 1.0
+
+    def fit(self, taus: np.ndarray) -> list[_ProjectionFit]:
+        """
+        Fit every trial tau, cheapest available path first.
+
+        Raises ``LinAlgError`` if the model is degenerate at any trial tau and
+        ``ValueError`` if the record cannot support the three parameters, which
+        is how the caller learns the profile is unusable.
+        """
+        taus = np.atleast_1d(np.asarray(taus, dtype=np.float64))
+        dof = self.n - 3
+        if dof <= 0:
+            raise ValueError("Profile-Q degrees of freedom must be positive")
+        if self.uniform:
+            return self._fit_uniform(taus, dof)
+        return [self._fit_direct(float(tau), dof) for tau in taus]
+
+    # -- uniform grid --------------------------------------------------
+
+    def _fit_uniform(self, taus: np.ndarray, dof: int) -> list[_ProjectionFit]:
+        # Per-sample log-ratio of the model: decay plus phase advance.
+        log_ratio = -(self.dt / taus) + 1j * self._phase_step
+        envelope = geometric_sum(self.n, log_ratio)
+        squared = geometric_sum(self.n, 2.0 * log_ratio)
+        # sum exp(-2t/tau): the same series with the tone removed.
+        envelope2 = geometric_sum(self.n, 2.0 * log_ratio.real).real
+        projection = self._index.project(log_ratio)
+
+        m = len(taus)
+        n = float(self.n)
+        gram = np.empty((m, 3, 3), dtype=np.float64)
+        # sum e^(-2t/tau) cos^2 = (sum e^(-2t/tau) + sum e^(-2t/tau) cos 2wt)/2,
+        # and likewise for sin^2 and the cross term.
+        gram[:, 0, 0] = 0.5 * (envelope2 + squared.real)
+        gram[:, 1, 1] = 0.5 * (envelope2 - squared.real)
+        gram[:, 0, 1] = gram[:, 1, 0] = 0.5 * squared.imag
+        gram[:, 0, 2] = gram[:, 2, 0] = envelope.real
+        gram[:, 1, 2] = gram[:, 2, 1] = envelope.imag
+        gram[:, 2, 2] = n
+        rhs = np.stack([projection.real, projection.imag, np.full(m, self.sy)], axis=1)
+
+        coef = np.linalg.solve(gram, rhs[..., None])[..., 0]
+        rss = self.yy - np.einsum("mi,mi->m", rhs, coef)
+        if not np.all(np.isfinite(rss)):
+            raise np.linalg.LinAlgError("Profile-Q normal equations are degenerate")
+
+        fits: list[_ProjectionFit] = []
+        for idx in range(m):
+            value = float(rss[idx])
+            if value < self._rss_floor:
+                value = self._explicit_rss(float(taus[idx]), coef[idx])
+            fits.append(
+                _ProjectionFit(
+                    tau=float(taus[idx]),
+                    rss=value,
+                    sigma=float(np.sqrt(max(value, 0.0) / dof)),
+                    dof=dof,
+                    amplitude=float(np.hypot(coef[idx, 0], coef[idx, 1])),
+                    rank=3,
+                )
+            )
+        return fits
+
+    def _explicit_rss(self, tau: float, coef: np.ndarray) -> float:
+        """Residual sum of squares formed directly, for near-perfect fits."""
+        grid = np.arange(self.n) * self.dt
+        theta = (2.0 * np.pi * self.f_hat) * grid
+        model = np.exp(-grid / tau) * (coef[0] * np.cos(theta) + coef[1] * np.sin(theta)) + coef[2]
+        resid = self.data - model
+        return float(resid @ resid)
+
+    # -- non-uniform fallback ------------------------------------------
+
+    def _fit_direct(self, tau: float, dof: int) -> _ProjectionFit:
+        exp_term = np.exp(-self.t / tau)
+        np.multiply(exp_term, self._cos_wt, out=self._matrix[:, 0])
+        np.multiply(exp_term, self._sin_wt, out=self._matrix[:, 1])
+        coeffs, _, rank, _ = np.linalg.lstsq(self._matrix, self.data, rcond=None)
+        if rank < 3:
+            raise np.linalg.LinAlgError("Profile-Q design matrix is rank-deficient")
+        residuals = self.data - self._matrix @ coeffs
+        rss = float(np.sum(residuals**2))
+        return _ProjectionFit(
+            tau=tau,
+            rss=rss,
+            sigma=float(np.sqrt(max(rss, 0.0) / dof)),
+            dof=dof,
+            amplitude=float(np.hypot(coeffs[0], coeffs[1])),
+            rank=int(rank),
+        )
 
 
 class ProfileQEstimator:
@@ -124,37 +289,14 @@ class ProfileQEstimator:
         return float(np.max(np.abs(demeaned))) > threshold
 
     @staticmethod
-    def _fit_fixed_tau(t: np.ndarray, data: np.ndarray, f_hat: float, tau: float) -> _ProjectionFit:
-        exp_term = np.exp(-t / tau)
-        omega_t = 2.0 * np.pi * f_hat * t
-        design = np.column_stack(
-            [
-                exp_term * np.cos(omega_t),
-                exp_term * np.sin(omega_t),
-                np.ones_like(t),
-            ]
-        )
-        coeffs, _, rank, _ = np.linalg.lstsq(design, data, rcond=None)
-        if rank < design.shape[1]:
-            raise np.linalg.LinAlgError("Profile-Q design matrix is rank-deficient")
+    def _make_scan(t: np.ndarray, data: np.ndarray, f_hat: float) -> _ProfileScan:
+        """
+        Build the fitting engine for one profile scan.
 
-        residuals = data - design @ coeffs
-        rss = float(np.sum(residuals**2))
-        dof = int(len(data) - design.shape[1])
-        if dof <= 0:
-            raise ValueError("Profile-Q degrees of freedom must be positive")
-
-        a_cos, b_sin, _ = coeffs
-        sigma = float(np.sqrt(max(rss, 0.0) / dof))
-        amplitude = float(np.hypot(a_cos, b_sin))
-        return _ProjectionFit(
-            tau=float(tau),
-            rss=rss,
-            sigma=sigma,
-            dof=dof,
-            amplitude=amplitude,
-            rank=int(rank),
-        )
+        Overridable so that alternative fit implementations can be substituted
+        wholesale (the benchmarks' frozen reference does this).
+        """
+        return _ProfileScan(t, data, f_hat)
 
     @staticmethod
     def _crossing_tau(
@@ -274,14 +416,14 @@ class ProfileQEstimator:
         log_tau_max = float(np.log(tau_max))
         tau_grid = np.exp(np.linspace(log_tau_min, log_tau_max, n_profile_grid))
 
-        def fit_at_log_tau(log_tau: float) -> _ProjectionFit:
-            tau = float(np.exp(log_tau))
-            return self._fit_fixed_tau(t_norm, data_arr, f_hat, tau)
+        # Built once and shared by every fit in the scan below.
+        scan = self._make_scan(t_norm, data_arr, f_hat)
 
-        fits: list[_ProjectionFit] = []
+        def fit_at_log_tau(log_tau: float) -> _ProjectionFit:
+            return scan.fit(np.array([np.exp(log_tau)]))[0]
+
         try:
-            for tau in tau_grid:
-                fits.append(self._fit_fixed_tau(t_norm, data_arr, f_hat, float(tau)))
+            fits = scan.fit(tau_grid)
         except (np.linalg.LinAlgError, ValueError) as exc:
             return self._invalid_result(
                 status="failed",
