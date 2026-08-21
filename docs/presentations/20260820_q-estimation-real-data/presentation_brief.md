@@ -7,11 +7,11 @@
 > Math uses `$…$` / `$$…$$` (Markdown + KaTeX).
 
 - **Mode:** create
-- **Title (working):** When a tight error bar lies — quality-factor estimation on real ring-down data
-- **Subtitle:** Root cause, fix, and validation in `ringdownanalysis`
-- **Audience:** instrument / metrology researchers; center of gravity on the estimator
-  failure and the fix
-- **Duration:** ~20 min (slide budget: ~15 content slides + title + closing; ≈ 75 s/slide)
+- **Title (working):** Bias in coherent $Q$ fits on drifting resonators
+- **Subtitle:** Quality factor estimation on ring down data from real, drifting resonators
+- **Audience:** instrument / metrology researchers; center of gravity on model failure and
+  the estimator that survives it
+- **Duration:** ~20 min (slide budget: ~18 content slides + title + closing; ≈ 65–75 s/slide)
 - **Anchor sources:**
   `docs/investigations/20260818_q_estimation_failure_investigation.md` (evidence chain),
   `notebooks/20260818_EDU_PreVibe_vs_PostVibe_RingDown.ipynb` (measurements, controlled
