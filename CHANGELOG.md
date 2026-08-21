@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-21
+
+### Added
+
+- Segmented-demodulation Q estimator (`SegmentedDemodEstimator`) with drift
+  measurement, plateau handling, amplitude-resolved local Q, and residual
+  block-bootstrap confidence intervals
+- Estimator-selection architecture (`select_q_estimate`, `QSelection`) with
+  per-record regime classification and cross-estimator agreement checks
+- Q envelope diagnostic (`QEnvelopeDiagnostic`, `q_envelope_diagnostic`) and
+  envelope-seeded profile Q initialization
+- Nonlinear damping fit (`fit_nonlinear_damping`) with amplitude-dependent
+  decay and f(A) frequency-pull models
+- Synthetic pathology generators (`generate_driven_plateau`,
+  `generate_pathological_ringdown`) for driven-plateau and drift fixtures
+- Analyzer outputs for demod Q, coherence ratio, drift gate, envelope
+  agreement, and `Q_selected` recommendation fields
+- Batch `q_preference` option to prefer demod or profile Q in aggregate
+  statistics
+- `tau_est_fit_success` flag for envelope fit failures
+- Q envelope overlay plotting and mismatch highlighting in candidate Q plots
+- Opt-in real-data regression suite for demod (`pytest -m real_data`)
+- Before/after benchmark harness for the Q-estimation stack
+- Tutorial notebook ladder (`notebooks/0.1`–`0.6`) covering quick start,
+  drifting resonators, profile likelihood, frequency estimation, ODIN phasemeter
+  loading, and Monte Carlo CRLB workflows
+
+### Changed
+
+- **Breaking:** `BatchRingDownAnalyzer` now defaults to
+  `q_preference="demod"` instead of `"profile"`. Pass
+  `q_preference="profile"` to preserve 1.1.x batch Q behavior.
+- File size limits in `RingDownDataLoader` are now opt-in via
+  `max_file_size_bytes` instead of enforced by default
+- Profile-likelihood tau scan batched onto the uniform grid for better
+  performance
+- Segmented-demod segment tones fitted from closed-form normal equations
+- Example notebooks reorganized, stripped of execution outputs, and updated
+  to prefer demod Q on real-data workflows
+- README expanded with "Which Q should I trust?", data-quality guidance, and
+  migration notes for batch Q preference
+
+### Fixed
+
+- Profile Q gated on envelope agreement before being treated as valid
+- Crop cascade guarded against collapsed `tau_est` values
+- Demod plateau dynamic range measured from a robust peak estimate
+
 ## [1.1.0] - 2026-05-13
 
 ### Added
@@ -72,6 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MAT files loaded with `struct_as_record=False` to reduce deserialization risks
 - Path traversal rejected in `process_directory()` pattern
 
-[Unreleased]: https://github.com/mdovale/RingDownAnalysis/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/mdovale/RingDownAnalysis/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/mdovale/RingDownAnalysis/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mdovale/RingDownAnalysis/compare/v1.0.3...v1.1.0
 [0.1.0]: https://github.com/mdovale/RingDownAnalysis/releases/tag/v0.1.0

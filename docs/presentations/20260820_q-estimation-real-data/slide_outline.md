@@ -1,5 +1,11 @@
 # Q-estimation on real resonators — Slide outline (Phase 2)
 
+> **Superseded numbers.** Slides 5, 15 and 16 quote figures from the investigation report.
+> The built deck recomputes them from the shipped pipeline: the before-fix window spread is
+> $\times50$ (raw coherent estimate) rather than $12\times$ (gated), and the Pre/Post $Q$ claim
+> is band-resolved ($+5$ to $+54\ \%$) rather than a single $+13\ \%$. See
+> `presentation_review.md` § "Numbers as built".
+
 > Math uses `$…$` / `$$…$$`. One idea per slide.
 > 16 content slides + title. Speaking budget ≈ 20 min = 1200 s; sum below ≈ 1270 s,
 > inside the ~10 % buffer (1320 s).

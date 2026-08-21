@@ -109,7 +109,7 @@ def _format_optional_float(value, fmt: str) -> str:
 
 
 def _result_q_value(
-    result: dict, *, include_invalid: bool = False, q_preference: str = "profile"
+    result: dict, *, include_invalid: bool = False, q_preference: str = "demod"
 ) -> tuple[float | None, bool, str]:
     """
     Return the preferred Q value plus validity metadata for a result.
@@ -188,7 +188,7 @@ class BatchRingDownAnalyzer:
         self,
         analyzer: RingDownAnalyzer | None = None,
         *,
-        q_preference: str = "profile",
+        q_preference: str = "demod",
     ):
         """
         Initialize batch analyzer.
@@ -199,10 +199,10 @@ class BatchRingDownAnalyzer:
             RingDownAnalyzer instance to use. If None, creates default.
         q_preference : str
             Which estimator supplies the aggregate per-record Q:
-            "profile" (default, historical behavior) or "demod" (prefer the
-            drift-immune segmented-demodulation Q; recommended for real
-            long-record data). When the preferred estimator has no valid Q
-            the profile/NLS selection logic still applies.
+            "demod" (default; prefer the drift-immune segmented-demodulation
+            Q, recommended for real long-record data) or "profile" (historical
+            behavior). When the preferred estimator has no valid Q the
+            profile/NLS selection logic still applies.
         """
         if q_preference not in ("profile", "demod"):
             raise ValueError(f"q_preference must be 'profile' or 'demod', got {q_preference!r}")

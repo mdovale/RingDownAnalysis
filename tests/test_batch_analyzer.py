@@ -112,7 +112,7 @@ class TestBatchRingDownAnalyzer:
 
     def test_calculate_q_factors_prefers_valid_profile_q(self):
         """Profile Q is the preferred aggregate Q when it is valid."""
-        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="profile")
         batch_analyzer.results = [
             {
                 "f_nls": 5.0,
@@ -136,7 +136,7 @@ class TestBatchRingDownAnalyzer:
 
     def test_calculate_q_factors_skips_invalid_profile_without_nls_fallback(self):
         """Invalid profile Q prevents silent fallback to otherwise valid NLS Q."""
-        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="profile")
         batch_analyzer.results = [
             {
                 "f_nls": 5.0,
@@ -160,7 +160,7 @@ class TestBatchRingDownAnalyzer:
 
     def test_calculate_q_factors_skips_mismatch_demoted_profile(self):
         """A finite but non-valid profile Q (envelope mismatch) is not batch-preferred."""
-        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="profile")
         batch_analyzer.results = [
             {
                 "f_nls": 5.0,
@@ -186,7 +186,7 @@ class TestBatchRingDownAnalyzer:
 
     def test_calculate_q_factors_never_returns_stale_profile_value_as_valid(self):
         """Even a finite Q_profile field is skipped when Q_profile_valid is False."""
-        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="profile")
         batch_analyzer.results = [
             {
                 "f_nls": 5.0,
@@ -204,7 +204,7 @@ class TestBatchRingDownAnalyzer:
 
     def test_calculate_q_factors_include_invalid_uses_profile_raw(self):
         """include_invalid falls back to the raw profile value when present."""
-        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="profile")
         batch_analyzer.results = [
             {
                 "f_nls": 5.0,
@@ -292,7 +292,7 @@ class TestBatchRingDownAnalyzer:
 
     def test_q_preference_per_call_override(self):
         """calculate_q_factors(q_preference=...) overrides the constructor setting."""
-        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer = BatchRingDownAnalyzer(q_preference="profile")
         batch_analyzer.results = [
             {
                 "f_nls": 5.0,
@@ -308,6 +308,24 @@ class TestBatchRingDownAnalyzer:
 
         assert batch_analyzer.calculate_q_factors() == [456.0]
         assert batch_analyzer.calculate_q_factors(q_preference="demod") == [789.0]
+
+    def test_q_preference_default_is_demod(self):
+        """The constructor default prefers valid demod Q over valid profile Q."""
+        batch_analyzer = BatchRingDownAnalyzer()
+        batch_analyzer.results = [
+            {
+                "f_nls": 5.0,
+                "tau_est": 100.0,
+                "Q_profile": 456.0,
+                "Q_profile_valid": True,
+                "Q_profile_status": "valid",
+                "Q_demod": 789.0,
+                "Q_demod_valid": True,
+                "Q_demod_status": "valid",
+            },
+        ]
+
+        assert batch_analyzer.calculate_q_factors() == [789.0]
 
     def test_q_preference_rejects_unknown_value(self):
         with pytest.raises(ValueError, match="q_preference"):

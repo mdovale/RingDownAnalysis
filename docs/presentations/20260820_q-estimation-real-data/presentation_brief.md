@@ -1,5 +1,9 @@
 # Q-estimation on real resonators — Presentation brief (Phase 1)
 
+> **Superseded numbers.** The evidence map below cites the investigation report. The built deck
+> recomputes every real-data value from the shipped pipeline; where they differ, the deck's value
+> is authoritative. See `presentation_review.md` § "Numbers as built".
+
 > Math uses `$…$` / `$$…$$` (Markdown + KaTeX).
 
 - **Mode:** create

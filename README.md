@@ -204,11 +204,10 @@ print(nl.q_at(100.0))                 # amplitude-matched local Q
 
 #### Migration note: batch Q preference
 
-`BatchRingDownAnalyzer` currently defaults to `q_preference="profile"`
-(historical behavior). For real long-record data construct it with
-`BatchRingDownAnalyzer(q_preference="demod")`, which prefers the drift-immune
-`Q_demod` and falls back to the profile logic when demod has no valid
-estimate. The default will switch to `"demod"` in the next release.
+`BatchRingDownAnalyzer` defaults to `q_preference="demod"` as of 1.2.0,
+preferring the drift-immune `Q_demod` and falling back to the profile logic
+when demod has no valid estimate. Pass `q_preference="profile"` to preserve
+the 1.1.x batch Q behavior.
 
 #### Configure Logging
 
@@ -535,12 +534,12 @@ Coverage is uploaded to [Codecov](https://codecov.io) (optional; add `CODECOV_TO
 
 To publish a new version to PyPI:
 
-1. Update `version` in `pyproject.toml`
+1. Update `version` in `pyproject.toml` and document the release in `CHANGELOG.md`
 2. Create and push a tag:
 
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v1.2.0
+   git push origin v1.2.0
    ```
 
 3. The release workflow builds and publishes to PyPI automatically.
