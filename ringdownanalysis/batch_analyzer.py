@@ -511,8 +511,8 @@ class BatchRingDownAnalyzer:
         Calculate Q factors for all processed results.
 
         The estimator preference comes from the constructor q_preference
-        (overridable per call). With "profile" (default) a valid profile Q is
-        used when available; with "demod" a valid segmented-demodulation Q
+        (overridable per call). With "demod" (default) a valid segmented-
+        demodulation Q is used when available; with "profile" a valid profile Q
         takes precedence. If the preferred estimator's Q is invalid or
         limit-only, the result is skipped by default instead of falling back
         to NLS. Pass include_invalid=True to use raw values for
