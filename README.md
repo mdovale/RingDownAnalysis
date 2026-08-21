@@ -1,6 +1,6 @@
 # Frequency and quality factor estimation of exponentially decaying sinusoids
 
-This repository contains theoretical analysis, numerical simulations, and experimental data analysis for frequency estimation of ring-down signals. Ring-down signals are exponentially decaying sinusoids that arise from measurements of harmonic oscillators with quality factor Q, where the amplitude decays exponentially due to energy dissipation.
+This repository contains theoretical analysis, numerical simulations, and experimental data analysis for **frequency and quality-factor (Q) estimation** of ring-down signals. Ring-down signals are exponentially decaying sinusoids that arise from measurements of harmonic oscillators with quality factor Q, where the amplitude decays exponentially due to energy dissipation.
 
 ## Quickstart
 
@@ -66,79 +66,34 @@ print(f"DFT full result: f={result_dft.f:.6f} Hz, tau={result_dft.tau:.2f} s, Q=
 #### Analyze Experimental Data
 
 ```python
-from ringdownanalysis import BatchRingDownAnalyzer
+from ringdownanalysis import RingDownAnalyzer, BatchRingDownAnalyzer
 import pandas as pd
 
-# Initialize batch analyzer
+# Single-file analysis: Q_selected is the recommended per-record Q
+analyzer = RingDownAnalyzer()
+result = analyzer.analyze_file("data/example.csv")
+if result["Q_selected_valid"]:
+    print(
+        f"Q = {result['Q_selected']:.3e} "
+        f"({result['Q_selected_source']}, {result['Q_selected_regime']})"
+    )
+
+# Batch processing (aggregate Q defaults to valid Q_demod; see migration note)
 batch_analyzer = BatchRingDownAnalyzer()
+batch_result = batch_analyzer.process_directory("data", verbose=True)
 
-# Process all files in data directory
-results = batch_analyzer.process_directory("data", verbose=True)
-
-# Get summary table
+# Get summary table (includes Q_demod, Q_profile, coherence_ratio, etc.)
 summary = batch_analyzer.get_summary_table()
-df_summary = pd.DataFrame(summary['data'])
+df_summary = pd.DataFrame(summary["data"])
 print(df_summary)
 
 # For notebook/console display strings:
-df_display = pd.DataFrame(batch_analyzer.get_formatted_summary_table()['data'])
+df_display = pd.DataFrame(batch_analyzer.get_formatted_summary_table()["data"])
 ```
 
 See `examples/usage_example.py` and `examples/batch_analysis_example.py` for more complete examples.
 Notebook walkthroughs: `notebooks/0.4_frequency-estimation.ipynb` for the standalone
 estimators, `notebooks/0.0_quick-start.ipynb` for the full pipeline.
-
-#### Profile Q, Limits, and Raw Diagnostics
-
-Real ring-down records may not identify the decay time constant well enough for
-a trustworthy Q estimate. `RingDownAnalyzer` therefore separates the preferred
-profile-likelihood Q result from raw optimizer diagnostics:
-
-- `Q_profile` is the recommended finite Q estimate. It is only populated when a
-  log-tau profile closes on both sides of the optimum.
-- `Q_profile_valid`, `Q_profile_status`, `Q_profile_reasons`,
-  `Q_profile_ci95`, `Q_profile_lower_limit_95`, and
-  `Q_profile_upper_limit_95` explain whether the data support a finite Q,
-  a one-sided limit, or no useful bound.
-- `Q_nls_raw` and `Q_dft_raw` preserve the direct fitted products from the
-  legacy optimizers.
-- `Q_nls` and `Q_dft` are retained as compatibility diagnostics and are only
-  populated when the corresponding estimate is cleanly valid.
-- `Q_nls_valid`, `Q_dft_valid`, `Q_nls_status`, `Q_dft_status`, and the
-  `Q_*_reasons` lists explain invalid or warning-status estimates.
-
-Common `Q_profile_status` values are:
-
-- `valid`: `Q_profile` and `Q_profile_ci95` are finite and may be quoted.
-- `lower_limit`: the record supports a lower bound, but not a finite upper
-  interval endpoint. Quote `Q_profile_lower_limit_95`, not `Q_profile`.
-- `upper_limit`: the record supports an upper bound only.
-- `unbounded`, `invalid`, or `failed`: the record does not support a finite Q.
-
-Always check status before quoting Q:
-
-```python
-result = analyzer.analyze_array(t=t, data=x)
-
-if result["Q_profile_valid"]:
-    print(f"Q = {result['Q_profile']:.3e} with 95% interval {result['Q_profile_ci95']}")
-elif result["Q_profile_status"] == "lower_limit":
-    print(f"Q > {result['Q_profile_lower_limit_95']:.3e} at approximately 95% confidence")
-else:
-    print(f"Profile Q unavailable: {result['Q_profile_status']} {result['Q_profile_reasons']}")
-```
-
-Batch Q statistics prefer valid `Q_profile` values. If profile-Q metadata is
-present but the profile is invalid or limit-only, the record is skipped by
-default instead of falling back to NLS. Pass `include_invalid=True` to
-`calculate_q_factors()` or `get_q_factor_statistics()` only for diagnostic work
-where raw fitted values are explicitly desired.
-
-For array workflows, pass `detrend="constant"` to `analyze_array()` when you
-want the same constant-offset removal used by file loading. To inspect
-window/crop sensitivity, use `RingDownAnalyzer.q_sensitivity(...)`; it returns
-DataFrame-ready records with valid Q, raw Q, status, reasons, tau bound flags,
-and crop metadata for each requested start/duration/multiplier combination.
 
 #### Which Q should I trust?
 
@@ -173,6 +128,24 @@ assumptions, and real records violate some of them. In order of preference:
 The dimensionless `coherence_ratio` = |measured drift| × τ quantifies drift:
 coherent estimators are trustworthy only for `coherence_ratio` ≲ 0.01.
 
+Always check status before quoting Q:
+
+```python
+from ringdownanalysis import RingDownAnalyzer
+
+analyzer = RingDownAnalyzer()
+result = analyzer.analyze_array(t=t, data=x)
+
+if result["Q_selected_valid"]:
+    print(f"Q = {result['Q_selected']:.3e} ({result['Q_selected_source']})")
+elif result["Q_profile_valid"]:
+    print(f"Profile Q = {result['Q_profile']:.3e} with 95% interval {result['Q_profile_ci95']}")
+elif result["Q_profile_status"] == "lower_limit":
+    print(f"Q > {result['Q_profile_lower_limit_95']:.3e} at approximately 95% confidence")
+else:
+    print(f"No finite Q: {result['Q_selected_status']} {result['Q_selected_reasons']}")
+```
+
 For amplitude-dependent damping (no single "true Q" exists), fit the
 amplitude laws explicitly:
 
@@ -185,6 +158,47 @@ print(nl.tau0, nl.beta, nl.Q0)        # zero-amplitude decay time and Q
 print(nl.f_zero, nl.f_pull)           # f(A) = f_zero + pull*A
 print(nl.q_at(100.0))                 # amplitude-matched local Q
 ```
+
+#### Profile Q, limits, and raw coherent diagnostics
+
+Beyond `Q_selected`, each record exposes detailed estimator metadata:
+
+- `Q_profile` is a finite profile-likelihood Q estimate when the log-tau
+  profile closes on both sides of the optimum.
+- `Q_profile_valid`, `Q_profile_status`, `Q_profile_reasons`,
+  `Q_profile_ci95`, `Q_profile_lower_limit_95`, and
+  `Q_profile_upper_limit_95` explain whether the data support a finite Q,
+  a one-sided limit, or no useful bound.
+- `Q_nls_raw` and `Q_dft_raw` preserve the direct fitted products from the
+  legacy optimizers.
+- `Q_nls` and `Q_dft` are retained as compatibility diagnostics and are only
+  populated when the corresponding estimate is cleanly valid.
+- `Q_nls_valid`, `Q_dft_valid`, `Q_nls_status`, `Q_dft_status`, and the
+  `Q_*_reasons` lists explain invalid or warning-status estimates.
+
+Common `Q_profile_status` values are:
+
+- `valid`: `Q_profile` and `Q_profile_ci95` are finite and may be quoted.
+- `lower_limit`: the record supports a lower bound, but not a finite upper
+  interval endpoint. Quote `Q_profile_lower_limit_95`, not `Q_profile`.
+- `upper_limit`: the record supports an upper bound only.
+- `unbounded`, `invalid`, or `failed`: the record does not support a finite Q.
+
+#### Batch aggregate Q
+
+`BatchRingDownAnalyzer.calculate_q_factors()` fills the per-record `Q`,
+`Q_valid`, and `Q_status` fields used in summary tables. By default
+(`q_preference="demod"`, since 1.2.0) it prefers a valid `Q_demod` and falls
+back to valid profile Q when demod is unavailable. Invalid or limit-only
+estimates are skipped unless you pass `include_invalid=True` for diagnostic
+work. Per-file `Q_selected` remains available in each result dict from
+`process_directory()` / `process_files()` regardless of batch preference.
+
+For array workflows, pass `detrend="constant"` to `analyze_array()` when you
+want the same constant-offset removal used by file loading. To inspect
+window/crop sensitivity, use `RingDownAnalyzer.q_sensitivity(...)`; it returns
+DataFrame-ready records with valid Q, raw Q, status, reasons, tau bound flags,
+and crop metadata for each requested start/duration/multiplier combination.
 
 #### Data-quality notes for real records
 
@@ -237,12 +251,15 @@ See `examples/logging_config_example.py` for more logging configuration options.
 
 ## Overview
 
-The project compares two complementary approaches for frequency estimation:
+The project compares complementary approaches for **frequency and Q estimation**:
 
 1. **Nonlinear Least Squares (NLS)** with explicit ring-down model
 2. **Frequency-Domain Methods (DFT)** with Lorentzian peak fitting
+3. **Profile-likelihood Q** with finite intervals and one-sided limits
+4. **Segmented demodulation Q** — drift-immune, plateau-aware incoherent estimation
+5. **Envelope and selection layers** — diagnostics plus a single recommended `Q_selected`
 
-Both methods are evaluated against Cramér-Rao-style bounds derived from the explicit Fisher information matrix for ring-down signals. Real-data analyzer outputs such as `plugin_crlb_std_f`, `uncertainty_std_f`, and the backward-compatible `crlb_std_f` alias are plug-in diagnostics computed from the fitted model, residual noise, and selected crop. Treat batch ratios involving those values as heuristic consistency diagnostics rather than formal hypothesis tests.
+Frequency methods are evaluated against Cramér-Rao-style bounds derived from the explicit Fisher information matrix for ring-down signals. Real-data analyzer outputs such as `plugin_crlb_std_f`, `uncertainty_std_f`, and the backward-compatible `crlb_std_f` alias are plug-in diagnostics computed from the fitted model, residual noise, and selected crop. Treat batch ratios involving those values as heuristic consistency diagnostics rather than formal hypothesis tests.
 
 ## Features
 
@@ -250,7 +267,8 @@ Both methods are evaluated against Cramér-Rao-style bounds derived from the exp
 
 The package provides a modern object-oriented API:
 
-- **`RingDownSignal`**: Generate synthetic ring-down signals with specified parameters
+- **`RingDownSignal`**: Generate synthetic ring-down signals; pathology fixtures
+  (`generate_driven_plateau`, `generate_pathological_ringdown`) for plateau and drift
 - **`FrequencyEstimator`**: Base class for frequency estimation methods
   - **`NLSFrequencyEstimator`**: Nonlinear least squares estimation
     - `estimate()`: Returns frequency only
@@ -259,10 +277,17 @@ The package provides a modern object-oriented API:
     - `estimate()`: Returns frequency only
     - `estimate_full()`: Returns `EstimationResult` with frequency, tau (via NLS with fixed frequency), and Q
 - **`EstimationResult`**: Named tuple containing (f, tau, Q) estimates
+- **`SegmentedDemodEstimator`**: Drift-immune segmented-demodulation Q with plateau modeling
+- **`ProfileQEstimator`**: Standalone profile-likelihood Q with limits and CI fields
+- **`QEnvelopeDiagnostic`**: Envelope-slope Q diagnostic (`q_envelope_diagnostic`)
+- **`select_q_estimate` / `QSelection`**: Regime classifier behind `Q_selected` fields
+- **`fit_nonlinear_damping`**: Amplitude-dependent decay and f(A) pull models
 - **`CRLBCalculator`**: Calculate Cramér-Rao Lower Bound for frequency estimation
-- **`RingDownAnalyzer`**: Analyze individual ring-down data files
-- **`BatchRingDownAnalyzer`**: Batch process multiple data files
+- **`RingDownDataLoader`**: Load CSV and MAT (Moku:Lab Phasemeter) ring-down files
+- **`RingDownAnalyzer`**: Single-file analysis with multi-estimator Q outputs
+- **`BatchRingDownAnalyzer`**: Batch process multiple data files (`q_preference` for aggregate Q)
 - **`MonteCarloAnalyzer`**: Run Monte Carlo simulations to compare methods
+- **Plotting helpers**: `plot_q_envelope_overlay`, `plot_q_individual_results`, and related performance plots
 
 ### Compatibility Layer
 
@@ -273,6 +298,8 @@ from ringdownanalysis import (
     generate_ringdown,
     estimate_freq_nls_ringdown,
     estimate_freq_dft,
+    estimate_freq_dft_optimized,
+    db_to_lin,
     crlb_var_f_ringdown_explicit,
     monte_carlo_analysis,
 )
@@ -332,19 +359,19 @@ Process multiple experimental data files:
 from ringdownanalysis import BatchRingDownAnalyzer
 import pandas as pd
 
+# Default q_preference="demod" (since 1.2.0); pass q_preference="profile" for 1.1.x behavior
 batch_analyzer = BatchRingDownAnalyzer()
 
 # Process all files in data directory
-results = batch_analyzer.process_directory("data", verbose=True, n_jobs=-1)
+batch_result = batch_analyzer.process_directory("data", verbose=True, n_jobs=-1)
 
-# Valid Q factors are available from results or calculate_q_factors().
-# Invalid/warning raw values stay in Q_nls_raw and Q_dft_raw for diagnostics.
-batch_analyzer.calculate_q_factors()  # Ensures valid Q is in results dict
+# Per-file Q_selected is in each result dict; aggregate Q uses q_preference
+batch_analyzer.calculate_q_factors()
 q_stats = batch_analyzer.get_q_factor_statistics()
 
-# Get summary table
+# Summary table includes Q_demod, Q_profile, coherence_ratio, and aggregate Q
 summary = batch_analyzer.get_summary_table()
-df_summary = pd.DataFrame(summary['data'])
+df_summary = pd.DataFrame(summary["data"])
 # Use get_formatted_summary_table() or get_formatted_consistency_table()
 # when you want preformatted display strings instead of numeric columns.
 
@@ -373,6 +400,8 @@ See `examples/batch_analysis_example.py` for a complete batch analysis example.
   behind the `Q_selected` result fields
 - **`q_profile.py`** / **`q_envelope.py`**: profile-likelihood Q and
   envelope-slope diagnostic
+- **`plots.py`**: Monte Carlo and Q diagnostic plotting helpers
+- **`_gridfit.py`**: Shared grid utilities for demod segment fitting
 - **`crlb.py`**: CRLB calculation
 - **`data_loader.py`**: Data loading utilities for CSV and MAT files
 - **`analyzer.py`**: Single-file analysis
@@ -389,14 +418,17 @@ See `examples/batch_analysis_example.py` for a complete batch analysis example.
 
 ### Examples (`examples/`)
 
-- **`usage_example.py`**: Comprehensive usage examples for all features
+- **`usage_example.py`**: Signal generation, frequency estimation, Monte Carlo, and plotting
 - **`batch_analysis_example.py`**: Batch analysis workflow example
 - **`benchmark.py`**: Simple performance benchmark comparing NLS and DFT methods
+- **`crlb_scaling_figures.py`**: CRLB scaling figure generation
 - **`logging_config_example.py`**: Examples for configuring logging in production and debugging
 
 ### Benchmarks (`benchmarks/`)
 
 - **`benchmark_suite.py`**: Comprehensive pytest-benchmark test suite
+- **`bench_qestimation.py`**: Before/after harness for the Q-estimation stack
+- **`baseline_qestimation.py`**: Baseline timings for Q-estimation regressions
 - **`run_benchmarks.py`**: Script to run benchmarks and generate reports
 - **`run_profiling.py`**: Script to profile workloads and identify bottlenecks
 - **`profile_utils.py`**: cProfile utilities for profiling workloads
@@ -412,7 +444,7 @@ The `0.x` series is a tutorial ladder, in learning order:
 | --- | --- |
 | **`0.0_quick-start.ipynb`** | Synthetic quick start: `RingDownAnalyzer.analyze_array()`, input formats, a first look at `Q_selected` |
 | **`0.1_drifting-resonators.ipynb`** | Real `.csv`/`.mat` records: drift and plateau diagnostics, why `Q_selected` prefers `Q_demod`, amplitude-dependent damping |
-| **`0.2_batch-analysis.ipynb`** | Many files with `BatchRingDownAnalyzer`: `q_preference="demod"`, consistency tables, plug-in uncertainty ratios |
+| **`0.2_batch-analysis.ipynb`** | Many files with `BatchRingDownAnalyzer`: default demod aggregate Q, consistency tables, plug-in uncertainty ratios |
 | **`0.3_profile-likelihood-q.ipynb`** | Profile-likelihood Q on synthetics: finite estimates, one-sided limits, window sensitivity |
 | **`0.4_frequency-estimation.ipynb`** | `NLSFrequencyEstimator` vs `DFTFrequencyEstimator` standalone: `estimate()`/`estimate_full()`, windows, `f_min`, accuracy vs cost |
 | **`0.5_odin-phasemeter-data.ipynb`** | Zipped Moku:Pro exports via `mokutools`: the `start_time` offset pitfall, channel choice, one capped window end to end |
@@ -427,12 +459,13 @@ where relevant.
 
 - **NLS Method**: Achieves statistical efficiency, approaching the CRLB for ring-down signals when using the explicit ring-down model
 - **DFT Method**: Provides computationally efficient estimation with Lorentzian peak fitting, but suffers from statistical inefficiency due to discrete frequency sampling
+- **Real-data Q**: Coherent profile Q is exact on short drift-free records but can be biased by factors of 2–4 under frequency drift; segmented demodulation (`Q_demod`) and the `Q_selected` classifier address plateau-dominated and drifting resonator records
 - **Exponential Decay Impact**: The exponential amplitude decay reduces effective observation time and SNR, degrading estimation performance compared to constant-amplitude signals. The degradation depends on the ratio T/τ (observation time to decay time constant)
 - **Scaling Relationships**: For slow decay (T ≪ τ), accuracy scales as T⁻³/². For rapid decay (T ≫ τ), accuracy is limited by τ and scales as τ⁻³/²
 
 ## Security
 
-**File input**: Load only CSV and MAT files from trusted sources. MAT files use `struct_as_record=False` to reduce deserialization risks; for untrusted input, consider sandboxing or alternative loaders. CSV files via Pandas are generally safe for typical scientific data.
+**File input**: Load only CSV and MAT files from trusted sources. MAT files use `struct_as_record=False` to reduce deserialization risks; for untrusted input, consider sandboxing or alternative loaders. CSV files via Pandas are generally safe for typical scientific data. By default, `RingDownDataLoader.load()` does not enforce a file-size cap; pass `max_file_size_bytes` to reject oversized files.
 
 **Path handling**: `process_directory()` validates that the directory exists and rejects path traversal in the glob pattern (e.g., `../`). For production use with user-supplied paths (e.g., from a web form), validate and resolve paths to a trusted base directory before passing them to the API.
 
@@ -443,7 +476,7 @@ Experimental data files should be placed in the `data/` directory:
 - **CSV files**: Moku:Lab Phasemeter format with time in column 1 and phase (cycles) in column 4. `%` comments and leading plain-text headers are skipped.
 - **MAT files**: MATLAB format with `moku.data` as a non-empty 2D array containing time in column 1 and phase in column 4
 
-See `docs/data_format.md` for the full specification (column indices, units, validation rules, edge cases).
+See `docs/data_format.md` for the full specification (column indices, units, validation rules, optional file-size limit, edge cases).
 
 ## Dependencies
 
@@ -498,6 +531,12 @@ With coverage:
 pytest --cov=ringdownanalysis --cov-report=html
 ```
 
+Real-data regression tests are opt-in (require local ODIN archives and `mokutools`):
+
+```bash
+RINGDOWN_REAL_DATA_TESTS=1 pytest -m real_data
+```
+
 ## Benchmarking
 
 The package includes a comprehensive benchmarking and profiling suite to measure performance and identify bottlenecks:
@@ -505,6 +544,9 @@ The package includes a comprehensive benchmarking and profiling suite to measure
 ```bash
 # Run benchmarks with medium workload
 python benchmarks/run_benchmarks.py --size medium
+
+# Before/after Q-estimation stack timings
+python benchmarks/bench_qestimation.py
 
 # Profile critical workloads
 python benchmarks/run_profiling.py all --size medium
@@ -535,10 +577,11 @@ Coverage is uploaded to [Codecov](https://codecov.io) (optional; add `CODECOV_TO
 To publish a new version to PyPI:
 
 1. Update `version` in `pyproject.toml` and document the release in `CHANGELOG.md`
-2. Create and push a tag:
+2. Create and push a tag (after merging to the default branch):
 
    ```bash
    git tag v1.2.0
+   git push origin main
    git push origin v1.2.0
    ```
 
